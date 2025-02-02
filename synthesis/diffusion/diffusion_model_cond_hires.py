@@ -43,8 +43,10 @@ def forward_diffusion_sample(x_0, t, device="cpu"):
 
 
 # Define beta schedule
-T = 500
-betas = linear_beta_schedule(timesteps=T)
+#T = 500
+#T = 250
+T = 1000
+betas= linear_beta_schedule(timesteps=T)
 
 # Pre-calculate different terms for closed form
 alphas = 1.0 - betas
@@ -55,9 +57,19 @@ sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
 sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - alphas_cumprod)
 posterior_variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
 
+def adjust_image_size(img_size):
+    num_downsample = 4
+    min_size = 2 **num_downsample
+    new_height = ((img_size[0]+min_size-1)//min_size)*min_size
+    new_width = ((img_size[1] + min_size -1)//min_size)*min_size
+    return (new_height, new_width)
+
 # IMG_SIZE = 64
-IMG_SIZE = (546, 199)
-BATCH_SIZE = 128
+#IMG_SIZE = (546, 199)
+IMG_SIZE = adjust_image_size((546, 199))
+print(IMG_SIZE)
+#IMG_SIZE = (64, 64)
+BATCH_SIZE = 16
 
 
 def load_transformed_dataset():
@@ -196,6 +208,8 @@ class SimpleUnet(nn.Module):
             residual_inputs.append(x)
         for up in self.ups:
             residual_x = residual_inputs.pop()
+            if x.shape[2:] != residual_x.shape[2:]:
+                x = F.interpolate(x, size=residual_x.shape[2:], mode='nearest')
             # Add residual x as additional channels
             x = torch.cat((x, residual_x), dim=1)
             x = up(x, t)
@@ -280,26 +294,27 @@ def plot_10_images():
                 show_tensor_image(img.detach().cpu())
     plt.show()
 
+if __name__ == "__main__":
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device}")
+    model.to(device)
+    optimizer = Adam(model.parameters(), lr=0.001)
+    epochs = 200
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device}")
-model.to(device)
-optimizer = Adam(model.parameters(), lr=0.001)
-epochs = 200
+    for epoch in range(epochs):
+        for step, batch in enumerate(dataloader):
+            optimizer.zero_grad()
 
-for epoch in range(epochs):
-    for step, batch in enumerate(dataloader):
-        optimizer.zero_grad()
+            images, class_labels = batch[0].to(device), batch[1].to(device)
 
-        images, class_labels = batch[0].to(device), batch[1].to(device)
+            t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
+            loss = get_loss(model, images, t, class_labels)
+            loss.backward()
+            optimizer.step()
 
-        t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
-        loss = get_loss(model, images, t, class_labels)
-        loss.backward()
-        optimizer.step()
+            #if epoch % 5 == 0 and step == 0:
+            if step % 50 == 0:
+                print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
+                # sample_plot_image()
 
-        if epoch % 5 == 0 and step == 0:
-            print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
-            # sample_plot_image()
-
-torch.save(model.state_dict(), "diffusion_model_cond.pth")
+    torch.save(model.state_dict(), "diffusion_model_cond_hires.pth")
