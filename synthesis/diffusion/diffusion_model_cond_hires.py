@@ -43,10 +43,10 @@ def forward_diffusion_sample(x_0, t, device="cpu"):
 
 
 # Define beta schedule
-#T = 500
-#T = 250
+# T = 500
+# T = 250
 T = 1000
-betas= linear_beta_schedule(timesteps=T)
+betas = linear_beta_schedule(timesteps=T)
 
 # Pre-calculate different terms for closed form
 alphas = 1.0 - betas
@@ -57,18 +57,20 @@ sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
 sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - alphas_cumprod)
 posterior_variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
 
+
 def adjust_image_size(img_size):
     num_downsample = 4
-    min_size = 2 **num_downsample
-    new_height = ((img_size[0]+min_size-1)//min_size)*min_size
-    new_width = ((img_size[1] + min_size -1)//min_size)*min_size
+    min_size = 2**num_downsample
+    new_height = ((img_size[0] + min_size - 1) // min_size) * min_size
+    new_width = ((img_size[1] + min_size - 1) // min_size) * min_size
     return (new_height, new_width)
 
+
 # IMG_SIZE = 64
-#IMG_SIZE = (546, 199)
-IMG_SIZE = adjust_image_size((546, 199))
+# IMG_SIZE = (546, 199)
+IMG_SIZE = adjust_image_size((199, 546))
 print(IMG_SIZE)
-#IMG_SIZE = (64, 64)
+# IMG_SIZE = (64, 64)
 BATCH_SIZE = 16
 
 
@@ -209,7 +211,7 @@ class SimpleUnet(nn.Module):
         for up in self.ups:
             residual_x = residual_inputs.pop()
             if x.shape[2:] != residual_x.shape[2:]:
-                x = F.interpolate(x, size=residual_x.shape[2:], mode='nearest')
+                x = F.interpolate(x, size=residual_x.shape[2:], mode="nearest")
             # Add residual x as additional channels
             x = torch.cat((x, residual_x), dim=1)
             x = up(x, t)
@@ -294,6 +296,7 @@ def plot_10_images():
                 show_tensor_image(img.detach().cpu())
     plt.show()
 
+
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device}")
@@ -312,7 +315,7 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
 
-            #if epoch % 5 == 0 and step == 0:
+            # if epoch % 5 == 0 and step == 0:
             if step % 50 == 0:
                 print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
                 # sample_plot_image()

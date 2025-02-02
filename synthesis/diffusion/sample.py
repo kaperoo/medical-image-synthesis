@@ -163,5 +163,5 @@ if __name__ == "__main__":
             num_images=1,
             class_label=i,
             device=device,
-            img_size=(546, 200),
+            img_size=(208, 560),
         )
