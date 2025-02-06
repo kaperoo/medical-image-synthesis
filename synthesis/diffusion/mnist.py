@@ -2,15 +2,14 @@ import torch
 import torchvision
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-from torchvision import transforms
+from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
 import numpy as np
 from torch import nn
 import math
 from torch.optim import Adam
 
-PATH_TO_DATA = "../../data/augmented_data"
-
+BATCH_SIZE = 128
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
     return torch.linspace(start, end, timesteps)
@@ -56,53 +55,21 @@ sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - alphas_cumprod)
 posterior_variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
 
 
-def adjust_image_size(img_size):
-    num_downsample = 4
-    min_size = 2**num_downsample
-    new_height = ((img_size[0] + min_size - 1) // min_size) * min_size
-    new_width = ((img_size[1] + min_size - 1) // min_size) * min_size
-    return (new_height, new_width)
-
-
-# IMG_SIZE = 64
-# IMG_SIZE = (546, 199)
-IMG_SIZE = adjust_image_size((199, 546))
-# IMG_SIZE = adjust_image_size((64,64))
-print(IMG_SIZE)
-# IMG_SIZE = (64, 64)
-BATCH_SIZE = 16
-# BATCH_SIZE = 128
-
-
 def load_transformed_dataset():
     data_transforms = [
         transforms.Grayscale(num_output_channels=1),
-        transforms.Resize((IMG_SIZE[0], IMG_SIZE[1])),
-        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # Scales data into [0,1]
         transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
     ]
     data_transform = transforms.Compose(data_transforms)
 
-    dataset = torchvision.datasets.ImageFolder(PATH_TO_DATA, transform=data_transform)
-    return dataset
-
-
-def show_tensor_image(image):
-    reverse_transforms = transforms.Compose(
-        [
-            transforms.Lambda(lambda t: (t + 1) / 2),
-            transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
-            transforms.Lambda(lambda t: t * 255.0),
-            transforms.Lambda(lambda t: t.numpy().astype(np.uint8)),
-            transforms.ToPILImage(),
-        ]
+    dataset = torchvision.datasets.MNIST(
+            root='../../data',
+            train=True,
+            download=True,
+            transform=data_transform
     )
-
-    # Take first image of batch
-    if len(image.shape) == 4:
-        image = image[0, :, :, :]
-    plt.imshow(reverse_transforms(image), cmap="gray")
+    return dataset
 
 
 data = load_transformed_dataset()
@@ -218,7 +185,7 @@ class SimpleUnet(nn.Module):
         return self.output(x)
 
 
-model = SimpleUnet(7)
+model = SimpleUnet(10)
 # print("Num params: ", sum(p.numel() for p in model.parameters()))
 
 
@@ -256,53 +223,12 @@ def sample_timestep(x, class_label, t):
         return model_mean + torch.sqrt(posterior_variance_t) * noise
 
 
-@torch.no_grad()
-def sample_plot_image():
-    # Sample noise
-    img_size = IMG_SIZE
-    img = torch.randn((1, 1, img_size[0], img_size[1]), device=device)
-    plt.figure(figsize=(15, 3))
-    plt.axis("off")
-    num_images = 10
-    stepsize = int(T / num_images)
-    class_label = torch.tensor([0], device=device)
-    for i in range(0, T)[::-1]:
-        t = torch.full((1,), i, device=device, dtype=torch.long)
-        img = sample_timestep(img, class_label, t)
-        # Edit: This is to maintain the natural range of the distribution
-        img = torch.clamp(img, -1.0, 1.0)
-        if i % stepsize == 0:
-            plt.subplot(1, num_images, int(i / stepsize) + 1)
-            show_tensor_image(img.detach().cpu())
-    plt.show()
-
-
-@torch.no_grad()
-def plot_10_images():
-    # generate 10 sample images and plot them
-    img_size = IMG_SIZE
-    img = torch.randn((10, 1, img_size[0], img_size[1]), device=device)
-    plt.figure(figsize=(15, 3))
-    plt.axis("off")
-    num_images = 10
-    for o in range(10):
-        for i in range(0, T)[::-1]:
-            t = torch.full((1,), i, device=device, dtype=torch.long)
-            img = sample_timestep(img, t)
-            # Edit: This is to maintain the natural range of the distribution
-            img = torch.clamp(img, -1.0, 1.0)
-            if i == 0:
-                plt.subplot(1, num_images, o + 1)
-                show_tensor_image(img.detach().cpu())
-    plt.show()
-
-
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device}")
     model.to(device)
     optimizer = Adam(model.parameters(), lr=0.001)
-    epochs = 100
+    epochs = 200
 
     for epoch in range(epochs):
         for step, batch in enumerate(dataloader):
@@ -320,4 +246,4 @@ if __name__ == "__main__":
                 print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
                 # sample_plot_image()
 
-    torch.save(model.state_dict(), "diffusion_model_cond_hires.pth")
+    torch.save(model.state_dict(), "mnist.pth")

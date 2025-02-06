@@ -1,4 +1,5 @@
 import torch
+import sys
 from torchvision import transforms
 from PIL import Image
 import os
@@ -12,6 +13,7 @@ from diffusion_model_cond_hires import (
     betas,
 )
 
+NUM_CLASSES = 7
 
 def tensor_to_image(tensor):
     """Convert a tensor to a PIL Image"""
@@ -62,8 +64,9 @@ def generate_and_save_images(
     num_images=1,
     class_label=0,
     device="cuda",
-    T=1000,
+    T=500,
     img_size=(560, 208),
+    tag='',
 ):
     """
     Generate images using the trained diffusion model and save them to files
@@ -103,7 +106,7 @@ def generate_and_save_images(
         pil_image = tensor_to_image(img[idx].cpu())
 
         # Create filename with timestamp, class label, and index
-        filename = f"generated_{timestamp}_class{class_label}_img{idx}.png"
+        filename = f"{tag}_{timestamp}_class{class_label}_img{idx}.png"
         filepath = os.path.join(output_dir, filename)
 
         # Save the image
@@ -113,7 +116,7 @@ def generate_and_save_images(
     return img
 
 
-def load_model(model_path, num_classes=7, device="cuda"):
+def load_model(model_path, num_classes=NUM_CLASSES, device="cuda"):
     """Load a saved diffusion model"""
     model = SimpleUnet(num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
@@ -124,44 +127,27 @@ def load_model(model_path, num_classes=7, device="cuda"):
 
 # Example usage
 if __name__ == "__main__":
+    model_name = sys.argv[1]
     # Set device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     # Load model
-    model_path = "diffusion_model_cond_hires.pth"
+    model_path = model_name + ".pth"
     model = load_model(model_path, device=device)
 
     # Generate and save images
     print("Generating images...")
 
-    # # Generate 4 images of class 0
-    # generated_images = generate_and_save_images(
-    #     model,
-    #     output_dir="generated_images",
-    #     num_images=4,
-    #     class_label=0,
-    #     device=device,
-    #     img_size=(546, 200),
-    # )
-
-    # # Generate 4 images of class 1
-    # generated_images_class1 = generate_and_save_images(
-    #     model,
-    #     output_dir="generated_images",
-    #     num_images=4,
-    #     class_label=1,
-    #     device=device,
-    #     img_size=(546, 200),
-    # )
-
     # Generate an image for each class
-    for i in range(7):
+    for i in range(NUM_CLASSES):
         generate_and_save_images(
             model,
             output_dir="generated_images",
             num_images=1,
             class_label=i,
             device=device,
+            T=500,
             img_size=(208, 560),
+            tag='test',
         )

@@ -43,7 +43,7 @@ def forward_diffusion_sample(x_0, t, device="cpu"):
 
 
 # Define beta schedule
-T = 500
+T = 1000
 betas = linear_beta_schedule(timesteps=T)
 
 # Pre-calculate different terms for closed form
@@ -280,25 +280,26 @@ def plot_10_images():
     plt.show()
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device}")
-model.to(device)
-optimizer = Adam(model.parameters(), lr=0.001)
-epochs = 200
+if __name__ == "__main__":
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device}")
+    model.to(device)
+    optimizer = Adam(model.parameters(), lr=0.001)
+    epochs = 200
 
-for epoch in range(epochs):
-    for step, batch in enumerate(dataloader):
-        optimizer.zero_grad()
+    for epoch in range(epochs):
+        for step, batch in enumerate(dataloader):
+            optimizer.zero_grad()
 
-        images, class_labels = batch[0].to(device), batch[1].to(device)
+            images, class_labels = batch[0].to(device), batch[1].to(device)
 
-        t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
-        loss = get_loss(model, images, t, class_labels)
-        loss.backward()
-        optimizer.step()
+            t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
+            loss = get_loss(model, images, t, class_labels)
+            loss.backward()
+            optimizer.step()
 
-        if epoch % 5 == 0 and step == 0:
-            print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
-            # sample_plot_image()
+            if epoch % 5 == 0 and step == 0:
+                print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
+                # sample_plot_image()
 
-torch.save(model.state_dict(), "diffusion_model_cond.pth")
+    torch.save(model.state_dict(), "diffusion_model_cond.pth")
