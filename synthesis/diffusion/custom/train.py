@@ -6,11 +6,13 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from unet import UNetConditional
 
-# PATH_TO_DATA = "../../../data/augmented_data"
-PATH_TO_DATA = "data/augmented_data"
+PATH_TO_DATA = "../../../data/MNIST"
+#PATH_TO_DATA = "../../../data/augmented_data"
+# PATH_TO_DATA = "data/augmented_data"
 T = 500
-BATCH_SIZE = 16
-EPOCHS = 200
+BATCH_SIZE = 128
+EPOCHS = 50
+NUM_CLASSES = 10
 
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
@@ -78,7 +80,7 @@ def load_transformed_dataset(img_size, path_to_data):
     return dataset
 
 
-model = UNetConditional()
+model = UNetConditional(num_classes=NUM_CLASSES)
 
 
 def get_loss(model, x_0, t, class_labels):
@@ -87,11 +89,20 @@ def get_loss(model, x_0, t, class_labels):
     return F.l1_loss(noise, noise_pred)
 
 
-IMG_SIZE = adjust_image_size((199, 546))
+#IMG_SIZE = adjust_image_size((199, 546))
+IMG_SIZE = adjust_image_size((28,28))
 
 
 if __name__ == "__main__":
-    data = load_transformed_dataset(IMG_SIZE, PATH_TO_DATA)
+    #data = load_transformed_dataset(IMG_SIZE, PATH_TO_DATA)
+    data = torchvision.datasets.MNIST(
+        root="../../../data",
+        train=True,
+        transform=transforms.Compose(
+            [transforms.Resize(IMG_SIZE), transforms.ToTensor()]
+        ),
+        download=False,
+    )
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"

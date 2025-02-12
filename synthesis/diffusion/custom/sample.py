@@ -1,53 +1,47 @@
 import torch
-import sys
-from torchvision import transforms
-from PIL import Image
+import torchvision.transforms as transforms
 import os
+from PIL import Image
 from datetime import datetime
-from train import (
-    get_index_from_list,
-    sqrt_recip_alphas,
-    posterior_variance,
-    sqrt_one_minus_alphas_cumprod,
-    betas,
-)
 from unet import UNetConditional
+from train import get_index_from_list, sqrt_recip_alphas, sqrt_one_minus_alphas_cumprod, posterior_variance, betas
 
+# Set parameters
+NUM_CLASSES = 10
+T = 500  # Diffusion steps
+IMG_SIZE = (28, 28)  # Adjust based on training size
+OUTPUT_DIR = "generated"
+TAG = "mnist_test"
+
+# Ensure output directory exists
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def tensor_to_image(tensor):
     """Convert a tensor to a PIL Image"""
-    # Reverse the normalization and channel ordering
-    reverse_transforms = transforms.Compose(
-        [
-            transforms.Lambda(lambda t: (t + 1) / 2),  # [-1,1] -> [0,1]
-            transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW -> HWC
-            transforms.Lambda(lambda t: t * 255.0),
-            transforms.Lambda(lambda t: t.numpy().astype("uint8")),
-        ]
-    )
+    transform = transforms.Compose([
+        transforms.Lambda(lambda t: (t + 1) / 2),  # Scale [-1,1] → [0,1]
+        transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW → HWC
+        transforms.Lambda(lambda t: t * 255.0),
+        transforms.Lambda(lambda t: t.numpy().astype("uint8")),
+    ])
 
-    # Convert to PIL Image
-    if len(tensor.shape) == 4:
-        tensor = tensor[0]  # Take first image if it's a batch
-    img = reverse_transforms(tensor)
-    return Image.fromarray(img.squeeze(), mode="L")  # squeeze for grayscale
-
+    img = transform(tensor.squeeze(0))  # Remove batch dim
+    return Image.fromarray(img.squeeze(), mode="L")  # Grayscale image
 
 @torch.no_grad()
 def sample_timestep(model, x, class_label, t, device):
-    """
-    Calls the model to predict the noise in the image and returns
-    the denoised image.
-    """
+    """Predicts noise and denoises the image step by step."""
     betas_t = get_index_from_list(betas, t, x.shape)
-    sqrt_one_minus_alphas_cumprod_t = get_index_from_list(
-        sqrt_one_minus_alphas_cumprod, t, x.shape
-    )
+    sqrt_one_minus_alphas_cumprod_t = get_index_from_list(sqrt_one_minus_alphas_cumprod, t, x.shape)
     sqrt_recip_alphas_t = get_index_from_list(sqrt_recip_alphas, t, x.shape)
 
-    model_mean = sqrt_recip_alphas_t * (
-        x - betas_t * model(x, t, class_label) / sqrt_one_minus_alphas_cumprod_t
-    )
+    predicted_noise = model(x, t, class_label)
+
+    # Ensure shape consistency
+    if predicted_noise.shape != x.shape:
+        predicted_noise = torch.nn.functional.interpolate(predicted_noise, size=x.shape[2:], mode="bilinear", align_corners=False)
+
+    model_mean = sqrt_recip_alphas_t * (x - betas_t * predicted_noise / sqrt_one_minus_alphas_cumprod_t)
     posterior_variance_t = get_index_from_list(posterior_variance, t, x.shape)
 
     if t == 0:
@@ -56,98 +50,45 @@ def sample_timestep(model, x, class_label, t, device):
         noise = torch.randn_like(x)
         return model_mean + torch.sqrt(posterior_variance_t) * noise
 
-
-def generate_and_save_images(
-    model,
-    output_dir="generated_images",
-    num_images=1,
-    class_label=0,
-    device="cuda",
-    T=500,
-    img_size=(560, 208),
-    tag="",
-):
-    """
-    Generate images using the trained diffusion model and save them to files
-
-    Args:
-        model: The trained diffusion model
-        output_dir: Directory to save generated images
-        num_images: Number of images to generate
-        class_label: Class label for conditional generation
-        device: Device to run generation on
-        T: Number of timesteps in the diffusion process
-        img_size: Size of the images to generate
-    """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Get timestamp for unique filenames
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
+def generate_and_save_images(model, device="cuda"):
+    """Generates and saves images for all classes."""
     model.eval()
+    
+    test_dir = os.path.join(OUTPUT_DIR, TAG)
+    os.makedirs(test_dir, exist_ok=True)
+    
+    for class_id in range(NUM_CLASSES):
+        # Generate image from pure noise
+        img = torch.randn((1, 1, *IMG_SIZE), device=device)
+        class_tensor = torch.tensor([class_id], device=device)
 
-    # Sample noise
-    img = torch.randn((num_images, 1, img_size[0], img_size[1]), device=device)
+        for i in reversed(range(T)):
+            t = torch.full((1,), i, device=device, dtype=torch.long)
+            img = sample_timestep(model, img, class_tensor, t, device)
+            img = torch.clamp(img, -1.0, 1.0)  # Keep within valid range
 
-    # Set class label tensor
-    class_labels = torch.tensor([class_label] * num_images, device=device)
+        # Convert and save image
+        img_pil = tensor_to_image(img.cpu())
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        img_pil.save(os.path.join(test_dir, f"generated_{timestamp}.png"))
 
-    # Sampling loop
-    for i in range(T)[::-1]:
-        t = torch.full((num_images,), i, device=device, dtype=torch.long)
-        img = sample_timestep(model, img, class_labels, t, device)
-        img = torch.clamp(img, -1.0, 1.0)
+        print(f"Saved image for class {class_id} in {test_dir}")
 
-    # Save each generated image
-    for idx in range(num_images):
-        # Convert tensor to PIL Image
-        pil_image = tensor_to_image(img[idx].cpu())
-
-        # Create filename with timestamp, class label, and index
-        filename = f"{tag}_{timestamp}_class{class_label}_img{idx}.png"
-        filepath = os.path.join(output_dir, filename)
-
-        # Save the image
-        pil_image.save(filepath)
-        print(f"Saved image to {filepath}")
-
-    return img
-
-
-def load_model(model_path, num_classes, device="cuda"):
-    model = UNetConditional(num_classes)
+def load_model(model_path, num_classes=NUM_CLASSES, device="cuda"):
+    """Loads trained model."""
+    model = UNetConditional(num_classes=num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
-    model = model.to(device)
-    model.eval()
+    model.to(device)
     return model
 
-
-NUM_CLASSES = 7
-MODEL_NAME = "diffusion_custom.pth"
-
 if __name__ == "__main__":
-    model_name = sys.argv[1]
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    print(f"Using {device}")
 
     # Load model
-    model_path = MODEL_NAME
+    model_path = "diffusion_custom.pth"
     model = load_model(model_path, NUM_CLASSES, device=device)
 
-    # Generate and save images
+    # Generate images
     print("Generating images...")
-
-    # Generate an image for each class
-    for i in range(NUM_CLASSES):
-        generate_and_save_images(
-            model,
-            output_dir="generated_images",
-            num_images=1,
-            class_label=i,
-            device=device,
-            T=500,
-            img_size=(208, 560),
-            tag="test",
-        )
+    generate_and_save_images(model, device=device)

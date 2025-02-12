@@ -1,5 +1,4 @@
 import torch
-import sys
 from torchvision import transforms
 from PIL import Image
 import os
@@ -14,6 +13,7 @@ from diffusion_model_cond_hires import (
 )
 
 NUM_CLASSES = 7
+MODEL_NAME = "diffusion_model_cond_hires.pth"
 
 def tensor_to_image(tensor):
     """Convert a tensor to a PIL Image"""
@@ -81,12 +81,13 @@ def generate_and_save_images(
         img_size: Size of the images to generate
     """
     # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    test_dir = os.path.join(output_dir, tag)
+    os.makedirs(test_dir, exist_ok=True)
 
     # Get timestamp for unique filenames
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    model.eval()
+    #model.eval()
 
     # Sample noise
     img = torch.randn((num_images, 1, img_size[0], img_size[1]), device=device)
@@ -107,7 +108,7 @@ def generate_and_save_images(
 
         # Create filename with timestamp, class label, and index
         filename = f"{tag}_{timestamp}_class{class_label}_img{idx}.png"
-        filepath = os.path.join(output_dir, filename)
+        filepath = os.path.join(test_dir, filename)
 
         # Save the image
         pil_image.save(filepath)
@@ -121,20 +122,17 @@ def load_model(model_path, num_classes=NUM_CLASSES, device="cuda"):
     model = SimpleUnet(num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
-    model.eval()
+    # model.eval()
     return model
 
 
 # Example usage
 if __name__ == "__main__":
-    model_name = sys.argv[1]
-    # Set device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     # Load model
-    model_path = model_name + ".pth"
-    model = load_model(model_path, device=device)
+    model = load_model(MODEL_NAME, device=device)
 
     # Generate and save images
     print("Generating images...")
@@ -147,7 +145,7 @@ if __name__ == "__main__":
             num_images=1,
             class_label=i,
             device=device,
-            T=500,
-            img_size=(208, 560),
-            tag='test',
+            T=1000,
+            img_size=(64,144),
+            tag='lowres',
         )

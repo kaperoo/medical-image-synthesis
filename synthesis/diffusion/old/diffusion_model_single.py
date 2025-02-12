@@ -1,20 +1,15 @@
-#import os
 import torch
 import torchvision
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
+import numpy as np
 from torch import nn
 import math
 from torch.optim import Adam
 
-#os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-PATH_TO_DATA = "../../data/augmented_data"
-NUM_CLASSES = 7
-T = 1000
-BATCH_SIZE = 16
-EPOCHS = 300
-TIME_EMBEDDING_DIM = 64
+PATH_TO_DATA = "../../data/single"
 
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
@@ -48,6 +43,7 @@ def forward_diffusion_sample(x_0, t, device="cpu"):
 
 
 # Define beta schedule
+T = 500
 betas = linear_beta_schedule(timesteps=T)
 
 # Pre-calculate different terms for closed form
@@ -68,11 +64,14 @@ def adjust_image_size(img_size):
     return (new_height, new_width)
 
 
-#IMG_SIZE = adjust_image_size((199, 546))
-#IMG_SIZE = adjust_image_size((64,144))
-IMG_SIZE = adjust_image_size((128,288))
-# IMG_SIZE = (28,28)
+# IMG_SIZE = 64
+# IMG_SIZE = (546, 199)
+IMG_SIZE = adjust_image_size((52, 140))
+# IMG_SIZE = adjust_image_size((64,64))
 print(IMG_SIZE)
+# IMG_SIZE = (64, 64)
+BATCH_SIZE = 1
+# BATCH_SIZE = 128
 
 
 def load_transformed_dataset():
@@ -89,6 +88,23 @@ def load_transformed_dataset():
     return dataset
 
 
+def show_tensor_image(image):
+    reverse_transforms = transforms.Compose(
+        [
+            transforms.Lambda(lambda t: (t + 1) / 2),
+            transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
+            transforms.Lambda(lambda t: t * 255.0),
+            transforms.Lambda(lambda t: t.numpy().astype(np.uint8)),
+            transforms.ToPILImage(),
+        ]
+    )
+
+    # Take first image of batch
+    if len(image.shape) == 4:
+        image = image[0, :, :, :]
+    plt.imshow(reverse_transforms(image), cmap="gray")
+
+
 data = load_transformed_dataset()
 dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 
@@ -99,20 +115,13 @@ class Block(nn.Module):
         self.time_mlp = nn.Linear(time_emb_dim, out_ch)
         if up:
             self.conv1 = nn.Conv2d(2 * in_ch, out_ch, 3, padding=1)
-            # self.transform = nn.ConvTranspose2d(out_ch, out_ch, 4, 2, 1)
-            self.transform = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-                nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                nn.ReLU(),
-            )
-            
+            self.transform = nn.ConvTranspose2d(out_ch, out_ch, 4, 2, 1)
         else:
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
             self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        self.bnorm1 = nn.GroupNorm(8, out_ch)
-        self.bnorm2 = nn.GroupNorm(8, out_ch)
+        self.bnorm1 = nn.BatchNorm2d(out_ch)
+        self.bnorm2 = nn.BatchNorm2d(out_ch)
         self.relu = nn.ReLU()
 
     def forward(self, x, t):
@@ -156,7 +165,7 @@ class SimpleUnet(nn.Module):
         down_channels = (64, 128, 256, 512, 1024)
         up_channels = (1024, 512, 256, 128, 64)
         out_dim = 1
-        time_emb_dim = TIME_EMBEDDING_DIM
+        time_emb_dim = 32
 
         # Time and class embedding
         self.time_mlp = nn.Sequential(
@@ -209,7 +218,7 @@ class SimpleUnet(nn.Module):
         return self.output(x)
 
 
-model = SimpleUnet(NUM_CLASSES)
+model = SimpleUnet(1)
 # print("Num params: ", sum(p.numel() for p in model.parameters()))
 
 
@@ -218,18 +227,42 @@ def get_loss(model, x_0, t, class_labels):
     noise_pred = model(x_noisy, t, class_labels)
     return F.l1_loss(noise, noise_pred)
 
-def print_gpu_memory():
-    allocated = torch.cuda.memory_allocated() / 1e6  # Convert to MB
-    reserved = torch.cuda.memory_reserved() / 1e6  # Convert to MB
-    print(f"GPU Memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
+
+@torch.no_grad()
+def sample_timestep(x, class_label, t):
+    """
+    Calls the model to predict the noise in the image and returns
+    the denoised image.
+    Applies noise to this image, if we are not in the last step yet.
+    """
+    betas_t = get_index_from_list(betas, t, x.shape)
+    sqrt_one_minus_alphas_cumprod_t = get_index_from_list(
+        sqrt_one_minus_alphas_cumprod, t, x.shape
+    )
+    sqrt_recip_alphas_t = get_index_from_list(sqrt_recip_alphas, t, x.shape)
+
+    # Call model (current image - noise prediction)
+    model_mean = sqrt_recip_alphas_t * (
+        x - betas_t * model(x, t, class_label) / sqrt_one_minus_alphas_cumprod_t
+    )
+    posterior_variance_t = get_index_from_list(posterior_variance, t, x.shape)
+
+    if t == 0:
+        # As pointed out by Luis Pereira (see YouTube comment)
+        # The t's are offset from the t's in the paper
+        return model_mean
+    else:
+        noise = torch.randn_like(x)
+        return model_mean + torch.sqrt(posterior_variance_t) * noise
+
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device}")
     model.to(device)
     optimizer = Adam(model.parameters(), lr=0.001)
-    epochs = EPOCHS
-    
+    epochs = 10000
+
     for epoch in range(epochs):
         for step, batch in enumerate(dataloader):
             optimizer.zero_grad()
@@ -240,13 +273,10 @@ if __name__ == "__main__":
             loss = get_loss(model, images, t, class_labels)
             loss.backward()
             optimizer.step()
-            #torch.cuda.empty_cache()
-
 
             # if epoch % 5 == 0 and step == 0:
             if step % 50 == 0:
-                # print_gpu_memory()
                 print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
                 # sample_plot_image()
 
-    torch.save(model.state_dict(), "diffusion_model_cond_hires.pth")
+    torch.save(model.state_dict(), "diffusion_model_single.pth")
