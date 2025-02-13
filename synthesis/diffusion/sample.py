@@ -1,44 +1,55 @@
 import torch
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from torchvision import transforms
-from PIL import Image
+import numpy as np
+from model import ConditionalUnet
+from training import linear_beta_schedule, get_index_from_list
 import os
-from datetime import datetime
-from diffusion_model_cond_hires import (
-    SimpleUnet,
-    get_index_from_list,
-    sqrt_recip_alphas,
-    posterior_variance,
-    sqrt_one_minus_alphas_cumprod,
-    betas,
-)
 
-NUM_CLASSES = 7
-MODEL_NAME = "diffusion_model_cond_hires.pth"
+MODEL_NAME = "model.pth"
+IMG_SIZE = (64,144)
+T = 2000
+TAG = "SiLU"
 
-def tensor_to_image(tensor):
-    """Convert a tensor to a PIL Image"""
-    # Reverse the normalization and channel ordering
-    reverse_transforms = transforms.Compose(
-        [
-            transforms.Lambda(lambda t: (t + 1) / 2),  # [-1,1] -> [0,1]
-            transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW -> HWC
-            transforms.Lambda(lambda t: t * 255.0),
-            transforms.Lambda(lambda t: t.numpy().astype("uint8")),
-        ]
-    )
+def show_tensor_image(image):
+    """
+    Converts a PyTorch tensor to a PIL image, ensuring proper scaling.
+    """
+    # TODO: RETHINK TRANSFORMS
+    reverse_transforms = transforms.Compose([
+        transforms.Lambda(lambda t: (t - t.min()) / (t.max() - t.min())),  # Scale from [-1, 1] to [0, 1]
+        transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
+        transforms.Lambda(lambda t: t * 255.),  # Scale to [0, 255]
+        transforms.Lambda(lambda t: t.numpy().astype(np.uint8)),  # Convert to uint8
+        transforms.ToPILImage(),
+    ])
 
-    # Convert to PIL Image
-    if len(tensor.shape) == 4:
-        tensor = tensor[0]  # Take first image if it's a batch
-    img = reverse_transforms(tensor)
-    return Image.fromarray(img.squeeze(), mode="L")  # squeeze for grayscale
+    # If batch dimension exists, take the first image
+    if len(image.shape) == 4:
+        image = image[0, :, :, :]
+    
+    #plt.imshow(reverse_transforms(image), cmap='gray')
+    return reverse_transforms(image)
 
+# Define beta schedule
+betas = linear_beta_schedule(timesteps=T)
+
+# Pre-calculate different terms for closed form
+alphas = 1. - betas
+alphas_cumprod = torch.cumprod(alphas, axis=0)
+alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
+sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
+sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
 
 @torch.no_grad()
-def sample_timestep(model, x, class_label, t, device):
+def sample_timestep(x, class_label, t):
     """
     Calls the model to predict the noise in the image and returns
     the denoised image.
+    Applies noise to this image, if we are not in the last step yet.
     """
     betas_t = get_index_from_list(betas, t, x.shape)
     sqrt_one_minus_alphas_cumprod_t = get_index_from_list(
@@ -46,106 +57,90 @@ def sample_timestep(model, x, class_label, t, device):
     )
     sqrt_recip_alphas_t = get_index_from_list(sqrt_recip_alphas, t, x.shape)
 
+    # Call model (current image - noise prediction)
     model_mean = sqrt_recip_alphas_t * (
         x - betas_t * model(x, t, class_label) / sqrt_one_minus_alphas_cumprod_t
     )
     posterior_variance_t = get_index_from_list(posterior_variance, t, x.shape)
 
     if t == 0:
+        # As pointed out by Luis Pereira (see YouTube comment)
+        # The t's are offset from the t's in the paper
         return model_mean
     else:
         noise = torch.randn_like(x)
         return model_mean + torch.sqrt(posterior_variance_t) * noise
 
-
-def generate_and_save_images(
-    model,
-    output_dir="generated_images",
-    num_images=1,
-    class_label=0,
-    device="cuda",
-    T=500,
-    img_size=(560, 208),
-    tag='',
-):
-    """
-    Generate images using the trained diffusion model and save them to files
-
-    Args:
-        model: The trained diffusion model
-        output_dir: Directory to save generated images
-        num_images: Number of images to generate
-        class_label: Class label for conditional generation
-        device: Device to run generation on
-        T: Number of timesteps in the diffusion process
-        img_size: Size of the images to generate
-    """
-    # Create output directory if it doesn't exist
-    test_dir = os.path.join(output_dir, tag)
-    os.makedirs(test_dir, exist_ok=True)
-
-    # Get timestamp for unique filenames
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    #model.eval()
-
+@torch.no_grad()
+def sample_plot_image():
     # Sample noise
-    img = torch.randn((num_images, 1, img_size[0], img_size[1]), device=device)
-
-    # Set class label tensor
-    class_labels = torch.tensor([class_label] * num_images, device=device)
-
-    # Sampling loop
-    for i in range(T)[::-1]:
-        t = torch.full((num_images,), i, device=device, dtype=torch.long)
-        img = sample_timestep(model, img, class_labels, t, device)
+    img_size = IMG_SIZE
+    img = torch.randn((1, 1, img_size[0], img_size[1]), device=device)
+    plt.figure(figsize=(15,3))
+    plt.axis('off')
+    num_images = 10
+    stepsize = int(T/num_images)
+    class_label = torch.tensor([0], device=device)
+    for i in range(0,T)[::-1]:
+        t = torch.full((1,), i, device=device, dtype=torch.long)
+        img = sample_timestep(img, class_label, t)
+        # Edit: This is to maintain the natural range of the distribution
         img = torch.clamp(img, -1.0, 1.0)
+        if i % stepsize == 0:
+            plt.subplot(1, num_images, int(i/stepsize)+1)
+            show_tensor_image(img.detach().cpu())
+    plt.show()
 
-    # Save each generated image
-    for idx in range(num_images):
-        # Convert tensor to PIL Image
-        pil_image = tensor_to_image(img[idx].cpu())
+@torch.no_grad()
+def plot_n_images(n=10):
+    # generate 10 sample images and plot them
+    img_size = IMG_SIZE
+    img = torch.randn((10, 1, img_size[0], img_size[1]), device=device)
+    plt.figure(figsize=(15,3))
+    plt.axis('off')
+    for o in range(n):
+        class_label = torch.tensor([o % 7], device=device)
+        for i in range(0,T)[::-1]:
+            t = torch.full((1,), i, device=device, dtype=torch.long)
+            img = sample_timestep(img, class_label, t)
+            # Edit: This is to maintain the natural range of the distribution
+            img = torch.clamp(img, -1.0, 1.0)
+            if i == 0:
+                plt.subplot(1, n, o+1)
+                show_tensor_image(img.detach().cpu())
+    #plt.show()
+    plt.savefig("no_eval_test.png")
 
-        # Create filename with timestamp, class label, and index
-        filename = f"{tag}_{timestamp}_class{class_label}_img{idx}.png"
-        filepath = os.path.join(test_dir, filename)
+@torch.no_grad()
+def generate_images(n=7, tag='other'):
+    save_dir = f"generated_images/{tag}"
+    os.makedirs(save_dir, exist_ok=True)
 
-        # Save the image
-        pil_image.save(filepath)
-        print(f"Saved image to {filepath}")
+    img_size = IMG_SIZE
+    for o in range(n):
+        img = torch.randn((1, 1, img_size[0], img_size[1]), device=device)
+        class_label = torch.tensor([o % 7], device=device)
 
-    return img
+        for i in range(0, T)[::-1]:
+            t = torch.full((1,), i, device=device, dtype=torch.long)
+            img = sample_timestep(img, class_label, t)
+            img = torch.clamp(img, -1.0, 1.0)  # Keep in range [-1, 1]
+
+        # Convert tensor to PIL and save
+        image = show_tensor_image(img.detach().cpu())
+        image.save(f"{save_dir}/class{o}_{tag}.png")
 
 
-def load_model(model_path, num_classes=NUM_CLASSES, device="cuda"):
+def load_model(model_path, num_classes, device="cuda"):
     """Load a saved diffusion model"""
-    model = SimpleUnet(num_classes)
+    model = ConditionalUnet(num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
     # model.eval()
     return model
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = load_model(MODEL_NAME, num_classes=7, device=device)
 
-# Example usage
-if __name__ == "__main__":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
-    # Load model
-    model = load_model(MODEL_NAME, device=device)
-
-    # Generate and save images
-    print("Generating images...")
-
-    # Generate an image for each class
-    for i in range(NUM_CLASSES):
-        generate_and_save_images(
-            model,
-            output_dir="generated_images",
-            num_images=1,
-            class_label=i,
-            device=device,
-            T=1000,
-            img_size=(64,144),
-            tag='lowres',
-        )
+#plot_n_images(7)
+generate_images(tag=TAG)

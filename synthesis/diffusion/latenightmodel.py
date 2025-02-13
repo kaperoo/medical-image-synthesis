@@ -12,8 +12,8 @@ from torch.optim import Adam
 PATH_TO_DATA = "../../data/augmented_data"
 NUM_CLASSES = 7
 T = 1000
-BATCH_SIZE = 128
-EPOCHS = 500
+BATCH_SIZE = 8
+EPOCHS = 750
 TIME_EMBEDDING_DIM = 128
 
 
@@ -69,8 +69,8 @@ def adjust_image_size(img_size):
 
 
 #IMG_SIZE = adjust_image_size((199, 546))
-IMG_SIZE = adjust_image_size((64,144))
-#IMG_SIZE = adjust_image_size((128,288))
+#IMG_SIZE = adjust_image_size((64,144))
+IMG_SIZE = adjust_image_size((128,288))
 # IMG_SIZE = (28,28)
 print(IMG_SIZE)
 
@@ -103,8 +103,8 @@ class Block(nn.Module):
             self.transform = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                #nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                nn.BatchNorm2d(out_ch),
+                nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
+                #nn.BatchNorm2d(out_ch),
                 nn.ReLU(),
             )
             
@@ -112,10 +112,10 @@ class Block(nn.Module):
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
             self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        #self.bnorm1 = nn.GroupNorm(8, out_ch)
-        self.bnorm1 = nn.BatchNorm2d(out_ch)
-        #self.bnorm2 = nn.GroupNorm(8, out_ch)
-        self.bnorm2 = nn.BatchNorm2d(out_ch)
+        self.bnorm1 = nn.GroupNorm(8, out_ch)
+        #self.bnorm1 = nn.BatchNorm2d(out_ch)
+        self.bnorm2 = nn.GroupNorm(8, out_ch)
+        #self.bnorm2 = nn.BatchNorm2d(out_ch)
         self.relu = nn.ReLU()
 
     def forward(self, x, t):
@@ -252,4 +252,4 @@ if __name__ == "__main__":
                 print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
                 # sample_plot_image()
 
-    torch.save(model.state_dict(), "diffusion_model_cond_hires.pth")
+    torch.save(model.state_dict(), "latenightmodel.pth")

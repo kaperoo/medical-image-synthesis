@@ -3,12 +3,17 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from torchvision import transforms
 import numpy as np
-from diffusion_model_cond_hires import SimpleUnet
+#from diffusion_model_cond_hires import SimpleUnet
+from latenightmodel import SimpleUnet
+#from model import SimpleUnet
 import os
 
+#MODEL_NAME = "model.pth"
+#MODEL_NAME = "diffusion_model_cond_hires.pth"
+MODEL_NAME = "latenightmodel.pth"
 IMG_SIZE = (128,288)
 T = 1000
-TAG = "128x228"
+TAG = "128x288-750e"
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
     return torch.linspace(start, end, timesteps)
@@ -41,7 +46,7 @@ def show_tensor_image(image):
     Converts a PyTorch tensor to a PIL image, ensuring proper scaling.
     """
     reverse_transforms = transforms.Compose([
-        transforms.Lambda(lambda t: (t + 1) / 2),  # Scale from [-1, 1] to [0, 1]
+        transforms.Lambda(lambda t: (t - t.min()) / (t.max() - t.min())),  # Scale from [-1, 1] to [0, 1]
         transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
         transforms.Lambda(lambda t: t * 255.),  # Scale to [0, 255]
         transforms.Lambda(lambda t: t.numpy().astype(np.uint8)),  # Convert to uint8
@@ -51,7 +56,8 @@ def show_tensor_image(image):
     # If batch dimension exists, take the first image
     if len(image.shape) == 4:
         image = image[0, :, :, :]
-
+    
+    #plt.imshow(reverse_transforms(image), cmap='gray')
     return reverse_transforms(image)
 
 
@@ -163,7 +169,7 @@ def load_model(model_path, num_classes, device="cuda"):
     return model
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = load_model("diffusion_model_cond_hires.pth", num_classes=7, device=device)
+model = load_model(MODEL_NAME, num_classes=7, device=device)
 # print(model)
 
 #plot_n_images(7)
