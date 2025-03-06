@@ -10,7 +10,7 @@ import os
 MODEL_NAME = "model.pth"
 IMG_SIZE = (64,144)
 T = 2000
-TAG = "SiLU"
+TAG = "Attention2"
 
 def show_tensor_image(image):
     """
@@ -18,7 +18,8 @@ def show_tensor_image(image):
     """
     # TODO: RETHINK TRANSFORMS
     reverse_transforms = transforms.Compose([
-        transforms.Lambda(lambda t: (t - t.min()) / (t.max() - t.min())),  # Scale from [-1, 1] to [0, 1]
+        # transforms.Lambda(lambda t: (t - t.min()) / (t.max() - t.min())),  # Scale from [-1, 1] to [0, 1]
+        transforms.Lambda(lambda t: (t + 1) / 2),
         transforms.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
         transforms.Lambda(lambda t: t * 255.),  # Scale to [0, 255]
         transforms.Lambda(lambda t: t.numpy().astype(np.uint8)),  # Convert to uint8

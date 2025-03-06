@@ -7,12 +7,13 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from model import ConditionalUnet
+import tqdm
 
 PATH_TO_CHECKPOINT = "./checkpoints"
 PATH_TO_DATA = "../../data/augmented_data"
 IMG_SIZE = (64, 144)
-LEARING_RATE = 1e-3
-EPOCHS = 300
+LEARING_RATE = 1e-4
+EPOCHS = 200
 BATCH_SIZE = 8
 T = 2000
 
@@ -101,34 +102,48 @@ if __name__ == "__main__":
     epochs = EPOCHS
     
     start_epoch = 0
-    # if sys.argv > 1:
-
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "resume":
+            checkpoint = torch.load(os.path.join(PATH_TO_CHECKPOINT, "state.pth"))
+            start_epoch = checkpoint['epoch']
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            loss = checkpoint['loss']
+            model.load_state_dict(torch.load(os.path.join(PATH_TO_CHECKPOINT, "model.pth")))
+            print(f"Resuming training from epoch {start_epoch}")
+        
+        else:
+            print("Invalid argument. Exiting...")
+            sys.exit(1)
+            
 
     for epoch in range(start_epoch, epochs):
-        for step, batch in enumerate(dataloader):
-            optimizer.zero_grad()
+        with tqdm.tqdm(total=len(dataloader),  desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch') as pbar:
+            for step, batch in enumerate(dataloader):
+                optimizer.zero_grad()
 
-            images, class_labels = batch[0].to(device), batch[1].to(device)
+                images, class_labels = batch[0].to(device), batch[1].to(device)
 
-            t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
-            loss = get_loss(model, images, t, class_labels)
-            loss.backward()
-            optimizer.step()
-            #torch.cuda.empty_cache()
+                t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
+                loss = get_loss(model, images, t, class_labels)
+                loss.backward()
+                optimizer.step()
+                #torch.cuda.empty_cache()
 
-            # if epoch % 5 == 0 and step == 0:
-            if step % 50 == 0:
-                # print_gpu_memory()
-                print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
-                # sample_plot_image()
+                # if epoch % 5 == 0 and step == 0:
+                # if step % 50 == 0:
+                #     # print_gpu_memory()
+                #     print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
+                #     # sample_plot_image()
+                pbar.set_postfix(loss=loss.item())
+                pbar.update(1)
 
-        if epoch % 10 == 0:
-            print(f"Saving model to {PATH_TO_CHECKPOINT}")
-            torch.save(model.state_dict(), os.path.join(PATH_TO_CHECKPOINT, "model.pth"))
-            torch.save({
-                'epoch': epoch,
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': loss.item(),
-            }, os.path.join(PATH_TO_CHECKPOINT, "state.pth"))
+            if epoch % 10 == 0:
+                print(f"Saving model to {PATH_TO_CHECKPOINT}")
+                torch.save(model.state_dict(), os.path.join(PATH_TO_CHECKPOINT, "model.pth"))
+                torch.save({
+                    'epoch': epoch,
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss.item(),
+                }, os.path.join(PATH_TO_CHECKPOINT, "state.pth"))
 
     torch.save(model.state_dict(), "model.pth")
