@@ -3,7 +3,7 @@ from torchvision import transforms
 from PIL import Image
 import os
 from datetime import datetime
-from diffusion_model_cond_hires import (
+from synthesis.diffusion.old.diffusion_model_cond_hires import (
     SimpleUnet,
     get_index_from_list,
     sqrt_recip_alphas,

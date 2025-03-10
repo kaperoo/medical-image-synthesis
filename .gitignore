@@ -58,3 +58,6 @@ venv.bak/
 # Models
 *.pth
 checkpoints/
+latentcheckpoints/
+
+old/

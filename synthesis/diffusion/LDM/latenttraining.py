@@ -6,14 +6,19 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
-from model import ConditionalUnet
+from synthesis.diffusion.LDM.latentmodel import LatentConditionalUnet
 import tqdm
+from synthesis.diffusion.LDM.autoencoder import Autoencoder  # Import the pretrained autoencoder
 
-PATH_TO_CHECKPOINT = "./checkpoints"
-PATH_TO_DATA = "../../data/augmented_data"
-IMG_SIZE = (64, 144)
+
+
+
+PATH_TO_CHECKPOINT = "./latentcheckpoints"
+PATH_TO_DATA = "../../../data/augmented_data"
+# IMG_SIZE = (64, 144)
+IMG_SIZE = (128, 288)
 LEARING_RATE = 1e-4
-EPOCHS = 200
+EPOCHS = 500
 BATCH_SIZE = 8
 T = 2000
 
@@ -31,20 +36,21 @@ def get_index_from_list(vals, t, x_shape):
     return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
 
 
-def forward_diffusion_sample(x_0, t, device="cpu"):
+def forward_diffusion_sample(z_0, t, device="cpu"):
     """
-    Takes an image and a timestep as input and
-    returns the noisy version of it
+    Takes a latent vector and a timestep as input and
+    returns the noisy version of it.
     """
-    noise = torch.randn_like(x_0)
-    sqrt_alphas_cumprod_t = get_index_from_list(sqrt_alphas_cumprod, t, x_0.shape)
+    noise = torch.randn_like(z_0)  # Generate Gaussian noise in latent space
+    sqrt_alphas_cumprod_t = get_index_from_list(sqrt_alphas_cumprod, t, z_0.shape)
     sqrt_one_minus_alphas_cumprod_t = get_index_from_list(
-        sqrt_one_minus_alphas_cumprod, t, x_0.shape
+        sqrt_one_minus_alphas_cumprod, t, z_0.shape
     )
-    # mean + variance
-    return sqrt_alphas_cumprod_t.to(device) * x_0.to(
+    # Mean + variance
+    return sqrt_alphas_cumprod_t.to(device) * z_0.to(
         device
     ) + sqrt_one_minus_alphas_cumprod_t.to(device) * noise.to(device), noise.to(device)
+
 
 # Define beta schedule
 betas = linear_beta_schedule(timesteps=T)
@@ -79,19 +85,23 @@ def load_transformed_dataset(img_size=IMG_SIZE):
     return dataset
 
 def get_loss(model, x_0, t, class_labels):
-    x_noisy, noise = forward_diffusion_sample(x_0, t, device)
-    noise_pred = model(x_noisy, t, class_labels)
-    return F.l1_loss(noise, noise_pred)
+    """
+    Compute the loss in latent space instead of pixel space.
+    """
+    z_0 = encoder(x_0)  # Encode image to latent space
+    z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
+    noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
+    return F.l1_loss(noise, noise_pred)  # Compute L1 loss
+
 
 def print_gpu_memory():
     allocated = torch.cuda.memory_allocated() / 1e6  # Convert to MB
     reserved = torch.cuda.memory_reserved() / 1e6  # Convert to MB
     print(f"GPU Memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
-# TODO: ADD CHECKPOINTING
 if __name__ == "__main__":
     
-    model = ConditionalUnet()
+    model = LatentConditionalUnet()
     data = load_transformed_dataset(adjust_image_size(IMG_SIZE))
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 
@@ -99,7 +109,14 @@ if __name__ == "__main__":
     print(f"Using {device}")
     model.to(device)
     optimizer = Adam(model.parameters(), lr=0.001)
-    epochs = EPOCHS
+    epochs = EPOCHS# Load pretrained autoencoder
+    autoencoder = Autoencoder(latent_dim=4).to(device)
+    autoencoder.load_state_dict(torch.load("autoencoder.pth"))  # Load trained model
+    autoencoder.eval()
+
+    # Extract encoder and decoder
+    encoder = autoencoder.encoder  # To encode images to latent space
+    decoder = autoencoder.decoder  # To decode latent vectors back to images
     
     start_epoch = 0
     if len(sys.argv) > 1:
@@ -115,28 +132,27 @@ if __name__ == "__main__":
             print("Invalid argument. Exiting...")
             sys.exit(1)
             
-
     for epoch in range(start_epoch, epochs):
-        with tqdm.tqdm(total=len(dataloader),  desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch') as pbar:
+        with tqdm.tqdm(total=len(dataloader), desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch') as pbar:
             for step, batch in enumerate(dataloader):
                 optimizer.zero_grad()
 
                 images, class_labels = batch[0].to(device), batch[1].to(device)
 
+                # Convert images to latent space
+                with torch.no_grad():  
+                    z_0 = encoder(images)  # Encode image to latent space
+
                 t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
                 loss = get_loss(model, images, t, class_labels)
+
                 loss.backward()
                 optimizer.step()
-                #torch.cuda.empty_cache()
 
-                # if epoch % 5 == 0 and step == 0:
-                # if step % 50 == 0:
-                #     # print_gpu_memory()
-                #     print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
-                #     # sample_plot_image()
                 pbar.set_postfix(loss=loss.item())
                 pbar.update(1)
 
+            # Save model checkpoint every 10 epochs
             if epoch % 10 == 0:
                 print(f"Saving model to {PATH_TO_CHECKPOINT}")
                 torch.save(model.state_dict(), os.path.join(PATH_TO_CHECKPOINT, "model.pth"))
@@ -146,4 +162,5 @@ if __name__ == "__main__":
                     'loss': loss.item(),
                 }, os.path.join(PATH_TO_CHECKPOINT, "state.pth"))
 
-    torch.save(model.state_dict(), "model.pth")
+    # Final save
+    torch.save(model.state_dict(), "latentmodel.pth")
