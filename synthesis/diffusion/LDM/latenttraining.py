@@ -6,9 +6,9 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
-from synthesis.diffusion.LDM.latentmodel import LatentConditionalUnet
+from latentmodel import LatentConditionalUnet
 import tqdm
-from synthesis.diffusion.LDM.autoencoder import Autoencoder  # Import the pretrained autoencoder
+from autoencoder import Autoencoder  # Import the pretrained autoencoder
 
 
 
@@ -17,10 +17,10 @@ PATH_TO_CHECKPOINT = "./latentcheckpoints"
 PATH_TO_DATA = "../../../data/augmented_data"
 # IMG_SIZE = (64, 144)
 IMG_SIZE = (128, 288)
-LEARING_RATE = 1e-4
-EPOCHS = 500
-BATCH_SIZE = 8
-T = 2000
+LEARING_RATE = 1e-3
+EPOCHS = 300
+BATCH_SIZE = 16
+T = 4000
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
     return torch.linspace(start, end, timesteps)

@@ -28,6 +28,37 @@ class AttentionBlock(nn.Module):
     def forward(self, x):
         return x * self.attn(x)
     
+class AttentionBlock2(nn.Module):
+    # Convolutional Block Attention Module (CBAM)
+    def __init__(self, in_channels, reduction_ratio=16):
+        super().__init__()
+        
+        # Channel Attention
+        self.channel_attn = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(in_channels, in_channels // reduction_ratio, 1, bias=False),
+            nn.ReLU(),
+            nn.Conv2d(in_channels // reduction_ratio, in_channels, 1, bias=False),
+            nn.Sigmoid()
+        )
+
+        # Spatial Attention
+        self.spatial_attn = nn.Sequential(
+            nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        # Channel Attention
+        attn_channel = self.channel_attn(x) * x
+        
+        # Spatial Attention
+        avg_out = torch.mean(attn_channel, dim=1, keepdim=True)
+        max_out, _ = torch.max(attn_channel, dim=1, keepdim=True)
+        attn_spatial = self.spatial_attn(torch.cat([avg_out, max_out], dim=1))
+        
+        return attn_channel * attn_spatial 
+    
 class Attention(nn.Module):
     def __init__(self, n_channels, n_heads = 1, d_k = None, n_groups = 32):
         super().__init__()
@@ -95,8 +126,8 @@ class Block(nn.Module):
             self.transform = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                #nn.BatchNorm2d(out_ch),
+                # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
+                nn.BatchNorm2d(out_ch),
                 # nn.ReLU(),
                 nn.SiLU(),
             )
@@ -105,14 +136,15 @@ class Block(nn.Module):
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
             self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        self.bnorm1 = nn.GroupNorm(8, out_ch)
-        #self.bnorm1 = nn.BatchNorm2d(out_ch)
-        self.bnorm2 = nn.GroupNorm(8, out_ch)
-        #self.bnorm2 = nn.BatchNorm2d(out_ch)
+        # self.bnorm1 = nn.GroupNorm(8, out_ch)
+        self.bnorm1 = nn.BatchNorm2d(out_ch)
+        # self.bnorm2 = nn.GroupNorm(8, out_ch)
+        self.bnorm2 = nn.BatchNorm2d(out_ch)
         # self.relu = nn.ReLU()
         self.relu = nn.SiLU()
         # self.attn = Attention(out_ch)
-        self.attn = AttentionBlock(out_ch)
+        # self.attn = AttentionBlock(out_ch)
+        self.attn = AttentionBlock2(out_ch)
         # self.attn = SAGAttention(out_ch)
 
     def forward(self, x, t):

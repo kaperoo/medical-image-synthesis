@@ -13,7 +13,7 @@ AUTOENCODER_PATH = "autoencoder.pth"  # Path to the trained autoencoder
 IMG_SIZE = (128, 288)  # Image resolution
 LATENT_DIM = 4  # Must match the encoder
 DOWNSAMPLE_FACTOR = 4  # Encoder downsampling factor
-T = 2000  # Number of diffusion timesteps
+T = 4000  # Number of diffusion timesteps
 TAG = "LDM_Attention128x288"
 
 def show_tensor_image(image):
@@ -73,7 +73,7 @@ def generate_latent_images(n=7, tag='ldm'):
     """
     Generate images using the **Latent Diffusion Model (LDM)**.
     """
-    save_dir = f"generated_images/{tag}"
+    save_dir = f"generated/{tag}"
     os.makedirs(save_dir, exist_ok=True)
 
     latent_size = (IMG_SIZE[0] // DOWNSAMPLE_FACTOR, IMG_SIZE[1] // DOWNSAMPLE_FACTOR)

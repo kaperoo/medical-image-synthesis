@@ -115,7 +115,7 @@ def plot_n_images(n=10):
 
 @torch.no_grad()
 def generate_images(n=7, tag='other'):
-    save_dir = f"generated_images/{tag}"
+    save_dir = f"generated/{tag}"
     os.makedirs(save_dir, exist_ok=True)
 
     img_size = IMG_SIZE

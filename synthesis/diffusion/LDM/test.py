@@ -1,0 +1,44 @@
+# test the autoencoder
+from autoencoder import Autoencoder, Encoder
+from torchvision import transforms
+from PIL import Image
+import torch
+import os
+import matplotlib.pyplot as plt
+
+# Load the pretrained autoencoder
+autoencoder = Autoencoder()
+autoencoder.load_state_dict(torch.load("autoencoder.pth"))
+autoencoder.eval()
+
+# Load an image
+img_path = "../../../data/augmented_data/AMD/amd_1047099_1.jpg"
+
+# scale the image to the correct size
+data_transforms = [
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((128, 288)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),  # Scales data into [0,1]
+        transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
+    ]
+data_transform = transforms.Compose(data_transforms)
+img = Image.open(img_path)
+img = data_transform(img).unsqueeze(0)
+
+# Pass the image through the autoencoder
+recon_img = autoencoder(img)
+
+# Display the original and reconstructed images
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1)
+plt.imshow(img[0].permute(1, 2, 0).detach().cpu().numpy(), cmap='gray')
+plt.title("Original Image")
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+plt.imshow(recon_img[0].permute(1, 2, 0).detach().cpu().numpy(), cmap='gray')
+plt.title("Reconstructed Image")
+plt.axis('off')
+
+plt.show()

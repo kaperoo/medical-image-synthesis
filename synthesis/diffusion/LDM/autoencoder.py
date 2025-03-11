@@ -9,7 +9,7 @@ from PIL import Image
 import os
 
 PATH_TO_CHECKPOINT = "./checkpoints"
-PATH_TO_DATA = "../../data/augmented_data"
+PATH_TO_DATA = "../../../data/augmented_data"
 # IMG_SIZE = (64, 144)
 IMG_SIZE = (128, 288)
 BATCH_SIZE = 16
@@ -20,9 +20,11 @@ class Encoder(nn.Module):
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # (250, 100)
-            nn.ReLU(),
+            # nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # (125, 50)
-            nn.ReLU(),
+            # nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(64, latent_dim, kernel_size=3, stride=1, padding=1),  # (125, 50)
         )
 
@@ -33,13 +35,17 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, latent_dim=4):
         super().__init__()
+        
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 64, kernel_size=3, stride=1, padding=1),  # (125, 50)
-            nn.ReLU(),
+            # nn.ReLU(),
+            nn.SiLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # (250, 100)
-            nn.ReLU(),
+            # nn.ReLU(),
+            nn.SiLU(),
             nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # (500, 200)
-            nn.Sigmoid()  # Normalize output to (0,1)
+            # nn.Sigmoid()  # Normalize output to (0,1)
+            nn.Tanh()  # Normalize output to (-1,1)
         )
 
     def forward(self, z):
@@ -71,7 +77,7 @@ def load_transformed_dataset(img_size=IMG_SIZE):
         transforms.Resize((img_size[0], img_size[1])),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # Scales data into [0,1]
-        # transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
+        transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
     ]
     data_transform = transforms.Compose(data_transforms)
 
@@ -90,7 +96,8 @@ if __name__ == "__main__":
 
     # Initialize model, loss, optimizer
     autoencoder = Autoencoder(latent_dim).to(device)
-    criterion = nn.MSELoss()  # Reconstruction loss
+    # criterion = nn.MSELoss()  # Reconstruction loss
+    criterion = nn.L1Loss()  # Reconstruction loss
     optimizer = optim.Adam(autoencoder.parameters(), lr=lr)
 
     # Training Loop
