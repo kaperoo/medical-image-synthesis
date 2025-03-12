@@ -13,7 +13,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 # --- SETUP ---
 # general
-ITERATION = '69'
+ITERATION = '71'
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PATH = 'data'
 RESULTS_PATH = f"results{ITERATION}"
@@ -27,7 +27,7 @@ IMG_WIDTH = 128
 IMG_HEIGHT = 64
 
 # hyperparameters
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 LEARNING_RATE = 1e-3
 TIMESTEPS = 1000
 TIME_EMBEDDING_DIM = 128
