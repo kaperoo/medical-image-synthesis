@@ -60,5 +60,8 @@ venv.bak/
 checkpoints/
 latentcheckpoints/
 
+# Logs
+log.txt
+
 old/
 generated/

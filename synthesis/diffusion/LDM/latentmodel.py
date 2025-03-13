@@ -3,7 +3,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import math
+import sys
+
+sys.path.append(sys.argv[0])
+
 from autoencoder import Encoder, Decoder  # Import the pretrained autoencoder
+
+#TODO: middle block?
 
 # Load pretrained encoder and decoder
 encoder = Encoder().eval()  # Load trained encoder
@@ -124,10 +130,10 @@ class Block(nn.Module):
             self.conv1 = nn.Conv2d(2 * in_ch, out_ch, 3, padding=1)
             # self.transform = nn.ConvTranspose2d(out_ch, out_ch, 4, 2, 1)
             self.transform = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                nn.BatchNorm2d(out_ch),
+                nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
+                # nn.BatchNorm2d(out_ch),
                 # nn.ReLU(),
                 nn.SiLU(),
             )
@@ -136,15 +142,15 @@ class Block(nn.Module):
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
             self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        # self.bnorm1 = nn.GroupNorm(8, out_ch)
-        self.bnorm1 = nn.BatchNorm2d(out_ch)
-        # self.bnorm2 = nn.GroupNorm(8, out_ch)
-        self.bnorm2 = nn.BatchNorm2d(out_ch)
+        self.bnorm1 = nn.GroupNorm(8, out_ch)
+        # self.bnorm1 = nn.BatchNorm2d(out_ch)
+        self.bnorm2 = nn.GroupNorm(8, out_ch)
+        # self.bnorm2 = nn.BatchNorm2d(out_ch)
         # self.relu = nn.ReLU()
         self.relu = nn.SiLU()
         # self.attn = Attention(out_ch)
         # self.attn = AttentionBlock(out_ch)
-        self.attn = AttentionBlock2(out_ch)
+        # self.attn = AttentionBlock2(out_ch)
         # self.attn = SAGAttention(out_ch)
 
     def forward(self, x, t):
@@ -159,7 +165,7 @@ class Block(nn.Module):
         # Second Conv
         h = self.bnorm2(self.relu(self.conv2(h)))
         # Attention
-        h = self.attn(h)
+        # h = self.attn(h)
         # Down or Upsample
         return self.transform(h)
 
@@ -181,15 +187,16 @@ class SinusoidalPositionEmbeddings(nn.Module):
 class LatentConditionalUnet(nn.Module):
     def __init__(self, num_classes=NUM_CLASSES, latent_dim=4):  # Use latent_dim instead of image channels
         super().__init__()
-        down_channels = (64, 128, 256, 512, 1024)
-        up_channels = (1024, 512, 256, 128, 64)
+        down_channels = (128, 256, 512, 1024, 2048)
+        up_channels = (2048, 1024, 512, 256, 128)
         time_emb_dim = TIME_EMBEDDING_DIM
 
         # Time and class embedding
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
-            nn.SiLU(),
+            # nn.SiLU(),
+            nn.ReLU(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)
 
@@ -207,6 +214,9 @@ class LatentConditionalUnet(nn.Module):
             Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True)
             for i in range(len(up_channels) - 1)
         ])
+
+        # self.activation = nn.SiLU()
+        # self.norm = nn.GroupNorm(8, up_channels[-1])
 
         self.output = nn.Conv2d(up_channels[-1], latent_dim, 1)
 
@@ -226,11 +236,18 @@ class LatentConditionalUnet(nn.Module):
         for up in self.ups:
             residual_z = residual_inputs.pop()
             if z.shape[2:] != residual_z.shape[2:]:
-                z = F.interpolate(z, size=residual_z.shape[2:], mode="nearest")
+                z = F.interpolate(z, size=residual_z.shape[2:], mode="bilinear", align_corners=False)
+
+            # Alternaive for interpolation
+            # diff_h = residual_z.shape[2] - z.shape[2]
+            # diff_w = residual_z.shape[3] - z.shape[3]
+            # z = F.pad(z, (diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2))
+
             z = torch.cat((z, residual_z), dim=1)
             z = up(z, t)
         
         return self.output(z)
+        # return self.output(self.activation(self.norm(z)))
 
 
 

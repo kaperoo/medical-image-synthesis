@@ -7,11 +7,18 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 import os
+import sys
 
-PATH_TO_CHECKPOINT = "./checkpoints"
+sys.path.append(sys.argv[0])
+
+PRINT = True
+SAVE_PATH = "."
+PATH_TO_CHECKPOINT = "checkpoints"
 PATH_TO_DATA = "../../../data/augmented_data"
 # IMG_SIZE = (64, 144)
-IMG_SIZE = (128, 288)
+# IMG_SIZE = (128, 288)
+IMG_SIZE = (128, 352)
+# IMG_SIZE = (208, 560)
 BATCH_SIZE = 16
 
 # Define Encoder
@@ -51,6 +58,30 @@ class Decoder(nn.Module):
     def forward(self, z):
         return self.decoder(z)
 
+    # def __init__(self, latent_dim=4):
+    #     super().__init__()
+        
+    #     self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        
+    #     self.conv1 = nn.Conv2d(latent_dim, 64, kernel_size=3, padding=1)
+    #     self.conv2 = nn.Conv2d(64, 32, kernel_size=3, padding=1)
+    #     self.conv3 = nn.Conv2d(32, 1, kernel_size=3, padding=1)
+        
+    #     # self.activation = nn.SiLU()
+    #     self.activation = nn.ReLU()
+        
+    # def forward(self, z):
+    #     x = self.upsample(z)  # (125, 50) -> (250, 100)
+    #     x = self.activation(self.conv1(x))
+        
+    #     x = self.upsample(x)  # (250, 100) -> (500, 200)
+    #     x = self.activation(self.conv2(x))
+        
+    #     x = self.conv3(x)  # Final output layer
+    #     x = torch.tanh(x)  # Normalize to (-1,1)
+        
+    #     return x
+
 # Combine Encoder and Decoder into Autoencoder
 class Autoencoder(nn.Module):
     def __init__(self, latent_dim=4):
@@ -85,6 +116,20 @@ def load_transformed_dataset(img_size=IMG_SIZE):
     return dataset
 
 if __name__ == "__main__":
+    
+    if len(sys.argv) > 1:
+        for i, arg in enumerate(sys.argv):
+            if i == 0:
+                continue
+            if arg == "--save":
+                SAVE_PATH = sys.argv[i+1]
+            elif arg == "--data":
+                PATH_TO_DATA = sys.argv[i+1]
+            elif arg == "-p":
+                PRINT = False
+    
+    if PRINT:
+        print(adjust_image_size(IMG_SIZE))
     data = load_transformed_dataset(adjust_image_size(IMG_SIZE))
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -115,8 +160,10 @@ if __name__ == "__main__":
             total_loss += loss.item()
 
         avg_loss = total_loss / len(dataloader)
-        print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}")
+        if PRINT:
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}")
 
     # Save model
     torch.save(autoencoder.state_dict(), "autoencoder.pth")
-    print("Training complete. Model saved.")
+    if PRINT:
+        print("Training complete. Model saved.")

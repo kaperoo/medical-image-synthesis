@@ -1,20 +1,23 @@
 import torch
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-from torchvision import transforms
+from torchvision import transforms, utils
 import numpy as np
 from latentmodel import LatentConditionalUnet
 from latenttraining import linear_beta_schedule, get_index_from_list
 from autoencoder import Autoencoder  # Import the pretrained autoencoder
 import os
 
+SAVE_PATH = "."
 MODEL_NAME = "latentmodel.pth"
 AUTOENCODER_PATH = "autoencoder.pth"  # Path to the trained autoencoder
-IMG_SIZE = (128, 288)  # Image resolution
+# IMG_SIZE = (128, 288)  # Image resolution
+IMG_SIZE = (128, 352)  # Image resolution
+# IMG_SIZE = (208, 560)  # Image resolution
 LATENT_DIM = 4  # Must match the encoder
 DOWNSAMPLE_FACTOR = 4  # Encoder downsampling factor
-T = 4000  # Number of diffusion timesteps
-TAG = "LDM_Attention128x288"
+T = 2000  # Number of diffusion timesteps
+TAG = "LDM"
 
 def show_tensor_image(image):
     """
@@ -74,7 +77,8 @@ def generate_latent_images(n=7, tag='ldm'):
     Generate images using the **Latent Diffusion Model (LDM)**.
     """
     save_dir = f"generated/{tag}"
-    os.makedirs(save_dir, exist_ok=True)
+    joined = os.path.join(SAVE_PATH, save_dir)
+    os.makedirs(joined, exist_ok=True)
 
     latent_size = (IMG_SIZE[0] // DOWNSAMPLE_FACTOR, IMG_SIZE[1] // DOWNSAMPLE_FACTOR)
 
@@ -93,7 +97,7 @@ def generate_latent_images(n=7, tag='ldm'):
 
         # Convert tensor to PIL image and save
         image = show_tensor_image(image.detach().cpu())
-        image.save(f"{save_dir}/class{o}_{tag}.png")
+        image.save(f"{joined}/class{o}_{tag}.png")
 
 def load_model(model_path, num_classes, device="cuda"):
     """Load a trained Latent Diffusion Model."""
