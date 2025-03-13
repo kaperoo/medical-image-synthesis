@@ -8,10 +8,11 @@ import torchvision
 import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from latentmodel import LatentConditionalUnet
 import tqdm
 from autoencoder import Autoencoder
+import torch.nn as nn
 
 PRINT = True
 LOG = False
@@ -23,9 +24,9 @@ PATH_TO_DATA = "../../../data/augmented_data"
 IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
 LEARING_RATE = 1e-3
-EPOCHS = 500
+EPOCHS = 10
 BATCH_SIZE = 16
-T = 2000
+T = 1000
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
     return torch.linspace(start, end, timesteps)
@@ -104,6 +105,21 @@ def print_gpu_memory():
     reserved = torch.cuda.memory_reserved() / 1e6  # Convert to MB
     print(f"GPU Memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
+
+def initialize_weights(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.Linear):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
+        nn.init.ones_(m.weight)
+        nn.init.zeros_(m.bias)
+
+
 if __name__ == "__main__":
     
     model = LatentConditionalUnet()
@@ -111,8 +127,10 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # print(f"Using {device}")
     model.to(device)
-    optimizer = Adam(model.parameters(), lr=0.001)
-    epochs = EPOCHS# Load pretrained autoencoder
+    model.apply(initialize_weights)
+    # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
+    optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
+    epochs = EPOCHS
     autoencoder = Autoencoder(latent_dim=4).to(device)    
     autoencoder.load_state_dict(torch.load(os.path.join(sys.path[0],"autoencoder.pth")))  # Load trained model
     autoencoder.eval()

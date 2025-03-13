@@ -58,6 +58,6 @@ plt.axis('off')
 # recon_img_pil.save("recon_img.jpg")
 
 # save the image
-# plt.savefig("autoencoder_test.png")
+plt.savefig("autoencoder_test.png")
 
 plt.show()

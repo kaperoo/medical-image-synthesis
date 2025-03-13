@@ -16,8 +16,8 @@ IMG_SIZE = (128, 352)  # Image resolution
 # IMG_SIZE = (208, 560)  # Image resolution
 LATENT_DIM = 4  # Must match the encoder
 DOWNSAMPLE_FACTOR = 4  # Encoder downsampling factor
-T = 2000  # Number of diffusion timesteps
-TAG = "LDM"
+T = 1000  # Number of diffusion timesteps
+TAG = "LDM_test"
 
 def show_tensor_image(image):
     """

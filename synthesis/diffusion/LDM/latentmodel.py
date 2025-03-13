@@ -215,8 +215,8 @@ class LatentConditionalUnet(nn.Module):
             for i in range(len(up_channels) - 1)
         ])
 
-        # self.activation = nn.SiLU()
-        # self.norm = nn.GroupNorm(8, up_channels[-1])
+        self.activation = nn.SiLU()
+        self.norm = nn.GroupNorm(8, up_channels[-1])
 
         self.output = nn.Conv2d(up_channels[-1], latent_dim, 1)
 
@@ -246,8 +246,8 @@ class LatentConditionalUnet(nn.Module):
             z = torch.cat((z, residual_z), dim=1)
             z = up(z, t)
         
-        return self.output(z)
-        # return self.output(self.activation(self.norm(z)))
+        # return self.output(z)
+        return self.output(self.activation(self.norm(z)))
 
 
 
