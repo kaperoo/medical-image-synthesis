@@ -1,5 +1,5 @@
 # test the autoencoder
-from autoencoder import Autoencoder, Encoder
+from autoencoder import Autoencoder, Encoder, Decoder
 from torchvision import transforms
 from PIL import Image
 import torch
@@ -31,6 +31,13 @@ img = data_transform(img).unsqueeze(0)
 
 # Pass the image through the autoencoder
 recon_img = autoencoder(img)
+
+latent = autoencoder.encoder(img)
+
+# save latent to a txt file
+# latent = latent[0].detach().cpu().numpy()
+# np.savetxt("latent.txt", latent.reshape(-1, latent.shape[-1]))
+# print(latent.shape)
 
 # Display the original and reconstructed images
 plt.figure(figsize=(10, 5))

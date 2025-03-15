@@ -17,7 +17,7 @@ IMG_SIZE = (128, 352)  # Image resolution
 LATENT_DIM = 4  # Must match the encoder
 DOWNSAMPLE_FACTOR = 4  # Encoder downsampling factor
 T = 1000  # Number of diffusion timesteps
-TAG = "LDM_test2"
+TAG = "LDM_test3"
 
 def show_tensor_image(image):
     """
@@ -86,11 +86,18 @@ def generate_latent_images(n=7, tag='ldm'):
         z = torch.randn((1, LATENT_DIM, latent_size[0], latent_size[1]), device=device)
         class_label = torch.tensor([o % 7], device=device)
 
-        for i in range(T - 1, -1, -1):  # Reverse diffusion process
+        # for i in range(T - 1, -1, -1):  # Reverse diffusion process
+        for i in range(0, T)[::-1]:
             t = torch.full((1,), i, device=device, dtype=torch.long)
             z = sample_timestep(z, class_label, t)
             z = torch.clamp(z, -1.0, 1.0)  # Keep in range [-1, 1]
 
+        # z = (z - z.mean()) / (z.std() + 1e-8)  # Normalize latents before decoding
+
+        # z = z.squeeze().cpu().numpy()
+        # np.savetxt(f"modelop2.txt", z.reshape(-1, z.shape[-1]))
+        # break
+        
         # Decode latent vector back into an image
         with torch.no_grad():
             image = decoder(z)

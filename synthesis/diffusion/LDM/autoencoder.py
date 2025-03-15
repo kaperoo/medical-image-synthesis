@@ -51,7 +51,6 @@ class Decoder(nn.Module):
             # nn.ReLU(),
             nn.SiLU(),
             nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # (500, 200)
-            # nn.Sigmoid()  # Normalize output to (0,1)
             nn.Tanh()  # Normalize output to (-1,1)
         )
 
@@ -108,7 +107,8 @@ def load_transformed_dataset(img_size=IMG_SIZE):
         transforms.Resize((img_size[0], img_size[1])),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # Scales data into [0,1]
-        transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
+        # transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
+        transforms.Normalize([0.5], [0.5]),
     ]
     data_transform = transforms.Compose(data_transforms)
 

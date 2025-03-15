@@ -24,7 +24,7 @@ PATH_TO_DATA = "../../../data/augmented_data"
 IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
 LEARING_RATE = 1e-3
-EPOCHS = 1000
+EPOCHS = 600
 BATCH_SIZE = 16
 T = 1000
 
@@ -83,18 +83,18 @@ def load_transformed_dataset(img_size=IMG_SIZE):
         transforms.Resize((img_size[0], img_size[1])),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # Scales data into [0,1]
-        transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
+        transforms.Normalize([0.5], [0.5]),
+        # transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
     ]
     data_transform = transforms.Compose(data_transforms)
 
     dataset = torchvision.datasets.ImageFolder(PATH_TO_DATA, transform=data_transform)
     return dataset
 
-def get_loss(model, x_0, t, class_labels):
+def get_loss(model, z_0, t, class_labels, device):
     """
     Compute the loss in latent space instead of pixel space.
     """
-    z_0 = encoder(x_0)  # Encode image to latent space
     z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
     noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
     # return F.l1_loss(noise, noise_pred)  # Compute L1 loss
@@ -107,18 +107,18 @@ def print_gpu_memory():
     print(f"GPU Memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
 
-def initialize_weights(m):
-    if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
-        if m.bias is not None:
-            nn.init.zeros_(m.bias)
-    elif isinstance(m, nn.Linear):
-        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
-        if m.bias is not None:
-            nn.init.zeros_(m.bias)
-    elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
-        nn.init.ones_(m.weight)
-        nn.init.zeros_(m.bias)
+# def initialize_weights(m):
+#     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+#         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
+#         if m.bias is not None:
+#             nn.init.zeros_(m.bias)
+#     elif isinstance(m, nn.Linear):
+#         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
+#         if m.bias is not None:
+#             nn.init.zeros_(m.bias)
+#     elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
+#         nn.init.ones_(m.weight)
+#         nn.init.zeros_(m.bias)
 
 
 if __name__ == "__main__":
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # print(f"Using {device}")
     model.to(device)
-    model.apply(initialize_weights)
+    # model.apply(initialize_weights)
     # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
     epochs = EPOCHS
@@ -176,7 +176,7 @@ if __name__ == "__main__":
                     z_0 = encoder(images)  # Encode image to latent space
 
                 t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
-                loss = get_loss(model, images, t, class_labels)
+                loss = get_loss(model, z_0, t, class_labels, device)
 
                 loss.backward()
                 optimizer.step()
