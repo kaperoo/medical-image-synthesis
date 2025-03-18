@@ -17,7 +17,7 @@ IMG_SIZE = (128, 352)  # Image resolution
 LATENT_DIM = 4  # Must match the encoder
 DOWNSAMPLE_FACTOR = 4  # Encoder downsampling factor
 T = 1000  # Number of diffusion timesteps
-TAG = "LDM_test6"
+TAG = "LDM_test7"
 
 def show_tensor_image(image):
     """
@@ -113,6 +113,8 @@ def load_model(model_path, num_classes, device="cuda"):
     model = model.to(device)
     return model
 
+
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load LDM Model
@@ -125,4 +127,5 @@ autoencoder.eval()
 decoder = autoencoder.decoder  # Use the decoder for final image reconstruction
 
 # Generate images using the **Latent Diffusion Model**
-generate_latent_images(tag=TAG)
+if __name__ == "main":
+    generate_latent_images(tag=TAG)

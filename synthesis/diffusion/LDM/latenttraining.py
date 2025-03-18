@@ -70,6 +70,29 @@ sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
 sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - alphas_cumprod)
 posterior_variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
 
+@torch.no_grad()
+def sample_timestep(z, class_label, t):
+    """
+    Performs a reverse diffusion step in **latent space**.
+    """
+    betas_t = get_index_from_list(betas, t, z.shape)
+    sqrt_one_minus_alphas_cumprod_t = get_index_from_list(
+        sqrt_one_minus_alphas_cumprod, t, z.shape
+    )
+    sqrt_recip_alphas_t = get_index_from_list(sqrt_recip_alphas, t, z.shape)
+
+    # Predict noise in latent space
+    model_mean = sqrt_recip_alphas_t * (
+        z - betas_t * model(z, t, class_label) / sqrt_one_minus_alphas_cumprod_t
+    )
+    posterior_variance_t = get_index_from_list(posterior_variance, t, z.shape)
+
+    if torch.all(t == 0):
+        return model_mean
+    else:
+        noise = torch.randn_like(z)
+        return model_mean + torch.sqrt(posterior_variance_t) * noise
+
 def adjust_image_size(img_size):
     num_downsample = 4
     min_size = 2**num_downsample
@@ -120,6 +143,29 @@ def print_gpu_memory():
 #         nn.init.ones_(m.weight)
 #         nn.init.zeros_(m.bias)
 
+
+@torch.no_grad()
+def generate(idx='', device="cpu"):
+    latent_dim = 4
+    img_size = (IMG_SIZE[0] // 4, IMG_SIZE[1] // 4)
+    class_labels = torch.arange(7, dtype=torch.long, device=device)
+    img = torch.randn((7, latent_dim, img_size[0], img_size[1]), device=device)
+
+    for i in range(0, T)[::-1]:
+        t = torch.full((7,), i, device=device, dtype=torch.long)
+        img = sample_timestep(img, class_labels, t)
+        img = torch.clamp(img, -1.0, 1.0)
+        
+    # loop over the images in the img and decode them
+    new_img = torch.zeros((7, 1, IMG_SIZE[0], IMG_SIZE[1]), device=device)
+    for i in range(7):
+        z = img[i].unsqueeze(0)
+        with torch.no_grad():
+            image = decoder(z)
+        new_img[i] = image
+    
+    fig_path = SAVE_PATH + "/generated/concat/"
+    torchvision.utils.save_image(new_img, f"{fig_path}{idx}.png", normalize=True)
 
 if __name__ == "__main__":
     
@@ -186,6 +232,7 @@ if __name__ == "__main__":
 
             # Save model checkpoint every 10 epochs
             if epoch % 10 == 9 and epoch > 1:
+                generate(idx=epoch, device=device)
                 if PRINT:
                     print(f"Saving model to {PATH_TO_CHECKPOINT}")
                 save_path = os.path.join(SAVE_PATH, PATH_TO_CHECKPOINT)
