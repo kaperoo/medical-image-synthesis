@@ -12,7 +12,6 @@ from torch.optim import Adam, AdamW
 from latentmodel import LatentConditionalUnet
 import tqdm
 from autoencoder import Autoencoder
-import torch.nn as nn
 
 PRINT = True
 LOG = False
@@ -24,7 +23,7 @@ PATH_TO_DATA = "../../../data/augmented_data"
 IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
 LEARING_RATE = 1e-3
-EPOCHS = 200
+EPOCHS = 1000
 BATCH_SIZE = 16
 T = 1000
 
@@ -130,20 +129,6 @@ def print_gpu_memory():
     print(f"GPU Memory - Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
 
-# def initialize_weights(m):
-#     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-#         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
-#         if m.bias is not None:
-#             nn.init.zeros_(m.bias)
-#     elif isinstance(m, nn.Linear):
-#         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='sigmoid')
-#         if m.bias is not None:
-#             nn.init.zeros_(m.bias)
-#     elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
-#         nn.init.ones_(m.weight)
-#         nn.init.zeros_(m.bias)
-
-
 @torch.no_grad()
 def generate(idx='', device="cpu"):
     latent_dim = 4
@@ -174,7 +159,6 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # print(f"Using {device}")
     model.to(device)
-    # model.apply(initialize_weights)
     # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
     epochs = EPOCHS
@@ -225,6 +209,7 @@ if __name__ == "__main__":
                 loss = get_loss(model, z_0, t, class_labels, device)
 
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 pbar.set_postfix(loss=loss.item())

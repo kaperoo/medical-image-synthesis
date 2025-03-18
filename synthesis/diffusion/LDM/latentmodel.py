@@ -7,9 +7,7 @@ import sys
 
 sys.path.append(sys.argv[0])
 
-from autoencoder import Encoder, Decoder  # Import the pretrained autoencoder
-
-#TODO: middle block?
+from autoencoder import Encoder
 
 # Load pretrained encoder
 encoder = Encoder().eval()  # Load trained encoder
@@ -28,8 +26,8 @@ class Block(nn.Module):
             self.transform = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                # nn.BatchNorm2d(out_ch),
+                # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
+                nn.BatchNorm2d(out_ch),
                 nn.ReLU(),
                 # nn.SiLU(),
             )
@@ -41,16 +39,17 @@ class Block(nn.Module):
             # self.transform = nn.AvgPool2d(2)
             self.transform = nn.Sequential(
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
+                # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
+                nn.BatchNorm2d(out_ch),
                 nn.ReLU(),
                 nn.AvgPool2d(2),
             )
             
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        self.bnorm1 = nn.GroupNorm(8, out_ch)
-        # self.bnorm1 = nn.BatchNorm2d(out_ch)
-        self.bnorm2 = nn.GroupNorm(8, out_ch)
-        # self.bnorm2 = nn.BatchNorm2d(out_ch)
+        # self.bnorm1 = nn.GroupNorm(8, out_ch)
+        self.bnorm1 = nn.BatchNorm2d(out_ch)
+        # self.bnorm2 = nn.GroupNorm(8, out_ch)
+        self.bnorm2 = nn.BatchNorm2d(out_ch)
         self.relu = nn.ReLU()
         # self.relu = nn.SiLU()
 
@@ -139,11 +138,6 @@ class LatentConditionalUnet(nn.Module):
             residual_z = residual_inputs.pop()
             if z.shape[2:] != residual_z.shape[2:]:
                 z = F.interpolate(z, size=residual_z.shape[2:], mode="bilinear", align_corners=False)
-
-            ## Alternaive for interpolation
-            # diff_h = residual_z.shape[2] - z.shape[2]
-            # diff_w = residual_z.shape[3] - z.shape[3]
-            # z = F.pad(z, (diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2))
 
             z = torch.cat((z, residual_z), dim=1)
             z = up(z, t)
