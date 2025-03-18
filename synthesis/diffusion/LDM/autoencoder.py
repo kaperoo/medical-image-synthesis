@@ -26,12 +26,17 @@ class Encoder(nn.Module):
     def __init__(self, latent_dim=4):
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # (250, 100)
-            # nn.ReLU(),
-            nn.SiLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # (125, 50)
-            # nn.ReLU(),
-            nn.SiLU(),
+            # nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # (250, 100)
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),  # (250, 100)
+            nn.AvgPool2d(2),
+            nn.ReLU(),
+            # nn.SiLU(),
+            # nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # (125, 50)
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),  # (125, 50)
+            nn.AvgPool2d(2),
+            nn.ReLU(),
+            # nn.SiLU(),
+            # nn.Conv2d(64, latent_dim, kernel_size=3, stride=1, padding=1),  # (125, 50)
             nn.Conv2d(64, latent_dim, kernel_size=3, stride=1, padding=1),  # (125, 50)
         )
 
@@ -45,11 +50,11 @@ class Decoder(nn.Module):
         
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(latent_dim, 64, kernel_size=3, stride=1, padding=1),  # (125, 50)
-            # nn.ReLU(),
-            nn.SiLU(),
+            nn.ReLU(),
+            # nn.SiLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),  # (250, 100)
-            # nn.ReLU(),
-            nn.SiLU(),
+            nn.ReLU(),
+            # nn.SiLU(),
             nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # (500, 200)
             nn.Tanh()  # Normalize output to (-1,1)
         )

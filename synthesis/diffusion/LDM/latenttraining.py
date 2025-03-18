@@ -24,7 +24,7 @@ PATH_TO_DATA = "../../../data/augmented_data"
 IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
 LEARING_RATE = 1e-3
-EPOCHS = 600
+EPOCHS = 200
 BATCH_SIZE = 16
 T = 1000
 
@@ -97,8 +97,8 @@ def get_loss(model, z_0, t, class_labels, device):
     """
     z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
     noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
-    # return F.l1_loss(noise, noise_pred)  # Compute L1 loss
-    return F.mse_loss(noise, noise_pred)  # Compute MSE loss
+    return F.l1_loss(noise, noise_pred)  # Compute L1 loss
+    # return F.mse_loss(noise, noise_pred)  # Compute MSE loss
 
 
 def print_gpu_memory():

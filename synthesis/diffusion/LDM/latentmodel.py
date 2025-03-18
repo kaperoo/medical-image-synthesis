@@ -30,20 +30,22 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 # nn.BatchNorm2d(out_ch),
-                # nn.ReLU(),
-                nn.SiLU(),
+                nn.ReLU(),
+                # nn.SiLU(),
             )
             
         else:
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
-            self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
+            # self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
+            # self.transform = nn.AdaptiveAvgPool2d((out_ch, out_ch))
+            self.transform = nn.AvgPool2d(2)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
         self.bnorm1 = nn.GroupNorm(8, out_ch)
         # self.bnorm1 = nn.BatchNorm2d(out_ch)
         self.bnorm2 = nn.GroupNorm(8, out_ch)
         # self.bnorm2 = nn.BatchNorm2d(out_ch)
-        # self.relu = nn.ReLU()
-        self.relu = nn.SiLU()
+        self.relu = nn.ReLU()
+        # self.relu = nn.SiLU()
 
     def forward(self, x, t):
         # First Conv
@@ -88,8 +90,8 @@ class LatentConditionalUnet(nn.Module):
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
-            nn.SiLU(),
-            # nn.ReLU(),
+            # nn.SiLU(),
+            nn.ReLU(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)
 
