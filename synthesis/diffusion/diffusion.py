@@ -1,11 +1,11 @@
-print('Initialising...')
 import torch
 import math
 import os
+#from tqdm import tqdm
 import numpy as np
-from tqdm import tqdm
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torchvision import datasets, transforms
@@ -13,18 +13,22 @@ from sklearn.utils.class_weight import compute_class_weight
 
 # --- SETUP ---
 # general
-ITERATION = '71'
+ITERATION = '83'
+OUTPUT_TO_FILE = True
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PATH = 'data'
 RESULTS_PATH = f"results{ITERATION}"
 os.makedirs(RESULTS_PATH, exist_ok=True)
-FIG_PATH = f"{RESULTS_PATH}/fig{ITERATION}_"
+FIG_PATH = f"{RESULTS_PATH}/figs/fig{ITERATION}_"
 MODEL_PATH = f"{RESULTS_PATH}/model{ITERATION}.pth"
+LOGS_PATH = f"{RESULTS_PATH}/figs/logs{ITERATION}.txt"
 
 # data info
 NUM_CLASSES = 7
-IMG_WIDTH = 128
-IMG_HEIGHT = 64
+IMG_WIDTH = 256 #512
+IMG_HEIGHT_SCALED = 94 #186
+IMG_HEIGHT = 128 #256
+PADDING = 17 #35
 
 # hyperparameters
 BATCH_SIZE = 8
@@ -32,11 +36,9 @@ LEARNING_RATE = 1e-3
 TIMESTEPS = 1000
 TIME_EMBEDDING_DIM = 128
 BASE_CHANNELS = 128
-CLASS_EMB_WEIGHT = 0.7
+CLASS_EMB_WEIGHT = 0.0
 NUM_LAYERS = 5
-EPOCHS = 100
-
-print(f"Using {DEVICE}")
+EPOCHS = 400
 
 # --- NOISE SCHEDULER ---
 def linear_beta_schedule(timesteps=TIMESTEPS, start=0.0001, end=0.02):
@@ -70,7 +72,7 @@ def sample_timestep(x, class_label, t):
     )
     sqrt_recip_alphas_t = get_index_from_list(sqrt_recip_alphas, t, x.shape)
 
-    model_output = model(x, t, class_label)
+    model_output = model(x, t, class_label, CLASS_EMB_WEIGHT)
     
     model_mean = sqrt_recip_alphas_t * (
         x - betas_t * model_output / sqrt_one_minus_alphas_cumprod_t
@@ -84,12 +86,21 @@ def sample_timestep(x, class_label, t):
         return model_mean + torch.sqrt(posterior_variance_t) * noise
     
 # --- HELPER FUNCTIONS ---
+def log (string):
+    if not OUTPUT_TO_FILE:
+        print(string)
+    else:
+        file = open(LOGS_PATH, "a")
+        file.write(string)
+        file.write('\n')
+        file.close()
+
 def get_loss(model, x_0, t, class_labels, class_weights):
     loss = nn.SmoothL1Loss(beta=0.1) 
     
     t = t[:x_0.shape[0]]
     x_noisy, noise = forward_diffusion_sample(x_0, t, DEVICE)
-    noise_pred = model(x_noisy, t, class_labels)
+    noise_pred = model(x_noisy, t, class_labels, CLASS_EMB_WEIGHT)
     
     per_sample_loss = loss(noise, noise_pred)
     weights = class_weights[class_labels].view(-1,1,1,1)
@@ -100,21 +111,14 @@ def get_loss(model, x_0, t, class_labels, class_weights):
 def load_data(): 
     transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
-        transforms.Resize((IMG_HEIGHT-16, IMG_WIDTH)),
-        transforms.Pad((0, 8)),
+        transforms.Resize((IMG_HEIGHT_SCALED, IMG_WIDTH)),
+        transforms.Pad((0, PADDING)),
         transforms.ToTensor(),
         transforms.Lambda(lambda t: (t * 2) - 1),
     ])
 
     dataset = datasets.ImageFolder(PATH, transform=transform)
     dataloader = DataLoader(dataset, batch_size = BATCH_SIZE, shuffle = True, num_workers = 4)
-
-    print(f"Classes: {dataset.classes}")
-    print(f"Number of  samples: {len(dataset)}")
-
-    for i, (x, _) in enumerate(dataloader):
-        print(f"Image shape: {x.shape}")
-        break
     return dataloader
 
 def load_model(model, path):
@@ -122,6 +126,23 @@ def load_model(model, path):
     model.load_state_dict(torch.load(path, weights_only=True, map_location=DEVICE))
     return model
     
+# Multihead Self Attention
+class MSA(nn.Module):
+    def __init__(self, dim, num_heads=8):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)  # Normalize before attention
+        self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True)
+
+    def forward(self, x):
+        B, C, H, W = x.shape  # Get shape
+        x = x.view(B, C, -1).permute(0, 2, 1)  # Reshape to (B, HW, C) for attention
+
+        x = self.norm(x)  # Layer Norm
+        x, _ = self.attn(x, x, x)  # Self-Attention
+
+        x = x.permute(0, 2, 1).view(B, C, H, W)  # Reshape back
+        return x
+
 # --- CBAM ATTENTION ---
 # src: https://arxiv.org/abs/1807.06521
 #      https://github.com/Jongchan/attention-module/
@@ -235,7 +256,12 @@ class Block(nn.Module):
             )
         else:
             self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,  padding=1)
-            self.transform = nn.Conv2d(out_channels, out_channels, kernel_size=4,  stride=2, padding=1)
+            self.transform = nn.Sequential(
+                nn.Conv2d(out_channels, out_channels, kernel_size=3,  padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(),
+                nn.AvgPool2d(kernel_size=2)
+            )
         
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,  padding=1)
         self.batch_norm1 = nn.BatchNorm2d(out_channels)
@@ -297,7 +323,7 @@ class UNet(nn.Module):
             for i in range(len(down_channels) - 1)
         ])
         
-        self.middle_attention = CBAM(down_channels[-1])
+        self.middle_attention = MSA(down_channels[-1])
         
         self.up_blocks = nn.ModuleList([
             Block(up_channels[i], up_channels[i + 1], time_emb_dim, upsample=True)
@@ -306,11 +332,11 @@ class UNet(nn.Module):
         
         self.final_conv = nn.Conv2d(up_channels[-1], image_channels, kernel_size=1)
     
-    def forward(self, x, t, class_label):
+    def forward(self, x, t, class_label, weight):
         t_emb = self.time_mlp(t)
         class_emb = self.class_embedding(class_label)
-        t_emb = t_emb + class_emb * CLASS_EMB_WEIGHT
-
+        t_emb = t_emb + class_emb * weight
+        
         x = self.initial_conv(x)
 
         residuals = []
@@ -343,61 +369,79 @@ def reverse_image (image):
     return reverse_transforms(image)
 
 @torch.no_grad()
-def generate_and_save(idx=''):
-    names = ['AMD', 'DME', 'ERM', 'NO', 'RAO', 'RVO', 'VID']
-    img_size =  (IMG_HEIGHT, IMG_WIDTH)
+def generate(idx=''):
+    class_labels = torch.arange(NUM_CLASSES, dtype=torch.long, device=DEVICE)
+    img_size = (IMG_HEIGHT, IMG_WIDTH)
+    img = torch.randn((NUM_CLASSES, 1, img_size[0], img_size[1]), device=DEVICE)
+
+    for i in range(0, TIMESTEPS)[::-1]:
+        t = torch.full((NUM_CLASSES,), i, device=DEVICE, dtype=torch.long)
+        img = sample_timestep(img, class_labels, t)
+        img = torch.clamp(img, -1.0, 1.0)
     
-    for class_idx in range(NUM_CLASSES):
-        img = torch.randn((1, 1, img_size[0], img_size[1]), device=DEVICE)
-        class_label = torch.tensor([class_idx % 7], device=DEVICE)
-
-        for i in range(0, TIMESTEPS)[::-1]:
-            t = torch.full((1,), i, device=DEVICE, dtype=torch.long)
-            img = sample_timestep(img, class_label, t)
-            img = torch.clamp(img, -1.0, 1.0)
-
-        image = reverse_image(img.detach().cpu())
-        image.save(FIG_PATH + names[class_idx] + idx + '.png')
-
+    filename = f"{FIG_PATH}{idx}.png"
+    torchvision.utils.save_image(img, filename, normalize=True)
+    log(f'Saved {filename}')
 
 # --- TRAINING ---
 def train_diffusion(): 
     model.train()
+    
     labels = np.concatenate([batch[1].numpy() for batch in dataloader])
     class_weights = compute_class_weight('balanced', classes=np.unique(labels), y=labels)
     class_weights = torch.tensor(class_weights, dtype=torch.float32).to(DEVICE)
-    print(f'Class weights: {class_weights}')
+    CLASS_EMB_WEIGHT = 0.0
     
     for epoch in range(EPOCHS):
-        with tqdm(total=len(dataloader), desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch') as pbar:
-            for step, batch in enumerate(dataloader):
-                optimizer.zero_grad()
+        for step, batch in enumerate(dataloader):
+            optimizer.zero_grad()
                 
-                images, class_labels = batch[0].to(DEVICE), batch[1].to(DEVICE)
+            images, class_labels = batch[0].to(DEVICE), batch[1].to(DEVICE)
                 
-                t = torch.randint(0, TIMESTEPS, (BATCH_SIZE,), device=DEVICE).long()
-                loss = get_loss(model, images, t, class_labels, class_weights)
-                loss.backward()
-                optimizer.step()
+            t = torch.randint(0, TIMESTEPS, (BATCH_SIZE,), device=DEVICE).long()
+            loss = get_loss(model, images, t, class_labels, class_weights)
+            loss.backward()
+            optimizer.step()
                 
-                pbar.set_postfix(loss=loss.item())
-                pbar.update(1)
+        if (OUTPUT_TO_FILE):
+            log(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item()}")      
+
+        if ((epoch + 1) % 10 == 0):
+           CLASS_EMB_WEIGHT += 0.05
+           generate(f'epoch{epoch + 1}')
+           log(f"Class weight increased to {CLASS_EMB_WEIGHT}")
+            
+        if ((epoch + 1) % 50 == 0):
+           filename = f"{RESULTS_PATH}/model{ITERATION}_epoch{epoch+1}.pth"
+           torch.save(model.state_dict(), filename)
+           log(f"Saved {filename}")
                 
-    torch.save(model.state_dict(), f"{MODEL_PATH}.pth")
+    torch.save(model.state_dict(), f"{MODEL_PATH}")
+    log(f"Saved {MODEL_PATH}")
 
 if __name__ == "__main__":
+    log(f"Using {DEVICE}")
+    
     dataloader = load_data()
     
     model = UNet()
+    if torch.cuda.device_count() > 1:
+        log(f'Using {torch.cuda.device_count()} GPUs')
+        model = nn.DataParallel(model)
+        
     model.to(DEVICE)    
     optimizer = Adam(model.parameters(), lr=LEARNING_RATE)
     
-    print('\nTraining diffusion model...')
+    log('Training diffusion model...')
     train_diffusion()
-    #model = load_model(model, f"{MODEL_PATH}.pth")
+    #model = load_model(model, f"{MODEL_PATH}")
     
+    log('\nGenerating images...')
     
-    print('\nGenerating images...')
-    generate_and_save('1')
-    generate_and_save('2')
-    print('Done.')
+    generate('final1')
+    generate('final2')
+    generate('final3')
+    generate('final4')
+    generate('final5')
+    
+    log('\nDone.')
