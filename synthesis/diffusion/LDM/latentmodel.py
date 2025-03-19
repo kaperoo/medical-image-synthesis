@@ -7,11 +7,6 @@ import sys
 
 sys.path.append(sys.argv[0])
 
-from autoencoder import Encoder
-
-# Load pretrained encoder
-encoder = Encoder().eval()  # Load trained encoder
-
 #os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 NUM_CLASSES = 7
 TIME_EMBEDDING_DIM = 128
