@@ -9,7 +9,8 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam, AdamW
-from latentmodel import LatentConditionalUnet
+from latentmodelattn import LatentConditionalUnet
+# from latentmodel import LatentConditionalUnet
 import tqdm
 from autoencoder import Autoencoder
 
