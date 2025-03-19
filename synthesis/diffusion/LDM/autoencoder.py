@@ -27,13 +27,13 @@ class Encoder(nn.Module):
         super().__init__()
         self.encoder = nn.Sequential(
             # nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # (250, 100)
-            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),  # (250, 100)
             nn.AvgPool2d(2),
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),  # (250, 100)
             nn.ReLU(),
             # nn.SiLU(),
             # nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # (125, 50)
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),  # (125, 50)
             nn.AvgPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),  # (125, 50)
             nn.ReLU(),
             # nn.SiLU(),
             # nn.Conv2d(64, latent_dim, kernel_size=3, stride=1, padding=1),  # (125, 50)
