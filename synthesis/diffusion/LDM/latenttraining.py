@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 
 sys.path.append(sys.argv[0])
 
@@ -14,11 +15,17 @@ from latentmodelattn import LatentConditionalUnet
 import tqdm
 from autoencoder import Autoencoder
 
-PRINT = True
-LOG = False
-SAVE_PATH = "."
-PATH_TO_CHECKPOINT = "./latentcheckpoints"
-PATH_TO_DATA = "../../../data/augmented_data"
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train a latent model")
+    parser.add_argument("--data", type=str, default="../../../data/augmented_data", help="Path to dataset")
+    parser.add_argument("--save", type=str, default=".", help="Path to save model")
+    parser.add_argument("--tag", type=str, default="latent", help="Tag for saving model")
+    parser.add_argument("--resume", action="store_true", help="Resume training")
+    parser.add_argument("--checkpoints", type=str, default="./latentcheckpoints", help="Path to save checkpoints")
+    parser.add_argument("-p", action="store_true", help="Disable print")
+    parser.add_argument("-l", action="store_true", help="Enable log")
+    return parser.parse_args()
+
 # IMG_SIZE = (64, 144)
 # IMG_SIZE = (128, 288)
 IMG_SIZE = (128, 352)
@@ -111,7 +118,7 @@ def load_transformed_dataset(img_size=IMG_SIZE):
     ]
     data_transform = transforms.Compose(data_transforms)
 
-    dataset = torchvision.datasets.ImageFolder(PATH_TO_DATA, transform=data_transform)
+    dataset = torchvision.datasets.ImageFolder(args.data, transform=data_transform)
     return dataset
 
 def get_loss(model, z_0, t, class_labels, device):
@@ -150,10 +157,13 @@ def generate(idx='', device="cpu"):
             image = decoder(z)
         new_img[i] = image
     
-    fig_path = SAVE_PATH + "/generated/concat/"
+    fig_path = args.save + f"/generated/{args.tag}/"
+    os.makedirs(fig_path, exist_ok=True)
     torchvision.utils.save_image(new_img, f"{fig_path}{idx}.png", normalize=True)
 
 if __name__ == "__main__":
+    
+    args = parse_args()
     
     model = LatentConditionalUnet()
     
@@ -164,31 +174,19 @@ if __name__ == "__main__":
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
     epochs = EPOCHS
     autoencoder = Autoencoder(latent_dim=4).to(device)    
-    autoencoder.load_state_dict(torch.load(os.path.join(sys.path[0],"autoencoder.pth")))  # Load trained model
+    autoencoder.load_state_dict(torch.load(os.path.join(args.save,"autoencoder.pth")))  # Load trained model
     autoencoder.eval()
     
     start_epoch = 0
     
-    if len(sys.argv) > 1:
-        for i, arg in enumerate(sys.argv):
-            if i == 0:
-                continue
-            if arg == "--resume":
-                save_path = os.path.join(SAVE_PATH, PATH_TO_CHECKPOINT)
-                checkpoint = torch.load(os.path.join(save_path, "state.pth"))
-                start_epoch = checkpoint['epoch']
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                loss = checkpoint['loss']
-                model.load_state_dict(torch.load(os.path.join(save_path, "model.pth")))
-                # print(f"Resuming training from epoch {start_epoch}")
-            elif arg == "--save":
-                SAVE_PATH = sys.argv[i+1]
-            elif arg == "--data":
-                PATH_TO_DATA = sys.argv[i+1]
-            elif arg == "-p":
-                PRINT = False
-            elif arg == "-l":
-                LOG = True
+    os.makedirs(os.path.join(args.save, args.tag), exist_ok=True)
+    if args.resume:
+        save_path = os.path.join(args.save, args.checkpoints)
+        checkpoint = torch.load(os.path.join(save_path, "state.pth"))
+        start_epoch = checkpoint['epoch']
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        loss = checkpoint['loss']
+        model.load_state_dict(torch.load(os.path.join(save_path, "model.pth")))
     
     data = load_transformed_dataset(adjust_image_size(IMG_SIZE))
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
@@ -196,7 +194,7 @@ if __name__ == "__main__":
     decoder = autoencoder.decoder  # To decode latent vectors back to images
             
     for epoch in range(start_epoch, epochs):
-        with tqdm.tqdm(total=len(dataloader), desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch', disable= (not PRINT)) as pbar:
+        with tqdm.tqdm(total=len(dataloader), desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch', disable= (args.p)) as pbar:
             for step, batch in enumerate(dataloader):
                 optimizer.zero_grad()
 
@@ -218,10 +216,8 @@ if __name__ == "__main__":
 
             # Save model checkpoint every 10 epochs
             if epoch % 10 == 9 and epoch > 1:
-                generate(idx=epoch, device=device)
-                if PRINT:
-                    print(f"Saving model to {PATH_TO_CHECKPOINT}")
-                save_path = os.path.join(SAVE_PATH, PATH_TO_CHECKPOINT)
+                generate(idx=epoch+1, device=device)
+                save_path = os.path.join(args.save, args.checkpoints)
                 torch.save(model.state_dict(), os.path.join(save_path, "model.pth"))
                 torch.save({
                     'epoch': epoch,
@@ -229,9 +225,9 @@ if __name__ == "__main__":
                     'loss': loss.item(),
                 }, os.path.join(save_path, "state.pth"))
             
-            if LOG:
+            if args.l:
                 # see if logfile exists
-                log_path = os.path.join(SAVE_PATH, "log.txt")
+                log_path = os.path.join(args.save, f"{args.tag}/log.txt")
                 if not os.path.exists(log_path):
                     with open(log_path, "w") as f:
                         f.write(f"Epoch {epoch}, Loss: {loss.item()}\n")
@@ -241,4 +237,4 @@ if __name__ == "__main__":
                 
 
     # Final save
-    torch.save(model.state_dict(), os.path.join(SAVE_PATH, "latentmodel.pth"))
+    torch.save(model.state_dict(), os.path.join(args.save, f"{args.tag}/latentmodel.pth"))

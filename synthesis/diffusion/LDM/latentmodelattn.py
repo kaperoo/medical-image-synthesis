@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import nn
 import math
 import sys
-from attention import MultiHeadSelfAttention, PositionalEncoding2D, MultiHeadCrossAttention
+from attention import MultiHeadSelfAttention, MultiHeadCrossAttention
 
 sys.path.append(sys.argv[0])
 
@@ -24,8 +24,8 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
-                nn.ReLU(),
-                # nn.SiLU(),
+                # nn.ReLU(),
+                nn.SiLU(),
             )
             
         else:
@@ -38,7 +38,8 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
-                nn.ReLU(),
+                # nn.ReLU(),
+                nn.SiLU(),
             )
             
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
@@ -46,8 +47,8 @@ class Block(nn.Module):
         self.bnorm1 = nn.BatchNorm2d(out_ch)
         # self.bnorm2 = nn.GroupNorm(8, out_ch)
         self.bnorm2 = nn.BatchNorm2d(out_ch)
-        self.relu = nn.ReLU()
-        # self.relu = nn.SiLU()
+        # self.relu = nn.ReLU()
+        self.relu = nn.SiLU()
 
     def forward(self, x, t):
         # First Conv
@@ -92,8 +93,8 @@ class LatentConditionalUnet(nn.Module):
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
-            # nn.SiLU(),
-            nn.ReLU(),
+            nn.SiLU(),
+            # nn.ReLU(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)
 
@@ -121,12 +122,12 @@ class LatentConditionalUnet(nn.Module):
         #     MultiHeadCrossAttention(up_channels[3], up_channels[4]),
         # ])
         
-        self.cross_attns = nn.ModuleList([
-            MultiHeadCrossAttention(up_channels[0], up_channels[0]),
-            MultiHeadCrossAttention(up_channels[1], up_channels[1]),
-            MultiHeadCrossAttention(up_channels[2], up_channels[2]),
-            MultiHeadCrossAttention(up_channels[3], up_channels[3]),
-        ])
+        # self.cross_attns = nn.ModuleList([
+        #     MultiHeadCrossAttention(up_channels[0], up_channels[0]),
+        #     MultiHeadCrossAttention(up_channels[1], up_channels[1]),
+        #     MultiHeadCrossAttention(up_channels[2], up_channels[2]),
+        #     MultiHeadCrossAttention(up_channels[3], up_channels[3]),
+        # ])
 
         # self.activation = nn.SiLU()
         # self.norm = nn.GroupNorm(8, up_channels[-1])
@@ -157,11 +158,11 @@ class LatentConditionalUnet(nn.Module):
             if z.shape[2:] != residual_z.shape[2:]:
                 z = F.interpolate(z, size=residual_z.shape[2:], mode="bilinear", align_corners=False)
             
-            z = self.cross_attns[i](z, residual_z)
+            # z = self.cross_attns[i](z, residual_z)
             # filtered_z = self.cross_attns[i](z, residual_z)
             
             # z = torch.cat((z, filtered_z), dim=1)
-            # z = torch.cat((z, residual_z), dim=1)
+            z = torch.cat((z, residual_z), dim=1)
             
             z = up(z, t)
         

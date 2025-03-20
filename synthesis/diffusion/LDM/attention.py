@@ -64,7 +64,7 @@ class MultiHeadSelfAttention(nn.Module):
         b, c, h, w = x.shape
         x = x + self.pos_embed(x)
         x = x.reshape(b, c, h * w).permute(0, 2, 1)
-        x, _ = self.mha(x, x, x)
+        x, _ = self.mha(x, x, x, need_weights=False)
         x = x.permute(0, 2, 1).reshape(b, c, h, w)
         return x
     
