@@ -25,7 +25,8 @@ class Block(nn.Module):
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
                 # nn.ReLU(),
-                nn.SiLU(),
+                # nn.SiLU(),
+                nn.LeakyReLU(),
             )
             
         else:
@@ -39,7 +40,8 @@ class Block(nn.Module):
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
                 # nn.ReLU(),
-                nn.SiLU(),
+                # nn.SiLU(),
+                nn.LeakyReLU(),
             )
             
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
@@ -48,7 +50,8 @@ class Block(nn.Module):
         # self.bnorm2 = nn.GroupNorm(8, out_ch)
         self.bnorm2 = nn.BatchNorm2d(out_ch)
         # self.relu = nn.ReLU()
-        self.relu = nn.SiLU()
+        # self.relu = nn.SiLU()
+        self.relu = nn.LeakyReLU()
 
     def forward(self, x, t):
         # First Conv
@@ -93,8 +96,9 @@ class LatentConditionalUnet(nn.Module):
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
-            nn.SiLU(),
+            # nn.SiLU(),
             # nn.ReLU(),
+            nn.LeakyReLU(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)
 
@@ -128,9 +132,6 @@ class LatentConditionalUnet(nn.Module):
         #     MultiHeadCrossAttention(up_channels[2], up_channels[2]),
         #     MultiHeadCrossAttention(up_channels[3], up_channels[3]),
         # ])
-
-        # self.activation = nn.SiLU()
-        # self.norm = nn.GroupNorm(8, up_channels[-1])
 
         self.output = nn.Conv2d(up_channels[-1], latent_dim, 1)
 
@@ -167,7 +168,6 @@ class LatentConditionalUnet(nn.Module):
             z = up(z, t)
         
         return self.output(z)
-        # return self.output(self.activation(self.norm(z)))
 
 
 
