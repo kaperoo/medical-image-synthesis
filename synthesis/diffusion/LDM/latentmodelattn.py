@@ -24,9 +24,9 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
-                # nn.ReLU(),
+                nn.ReLU(),
                 # nn.SiLU(),
-                nn.LeakyReLU(),
+                # nn.LeakyReLU(),
             )
             
         else:
@@ -39,9 +39,9 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
-                # nn.ReLU(),
+                nn.ReLU(),
                 # nn.SiLU(),
-                nn.LeakyReLU(),
+                # nn.LeakyReLU(),
             )
             
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
@@ -49,9 +49,9 @@ class Block(nn.Module):
         self.bnorm1 = nn.BatchNorm2d(out_ch)
         # self.bnorm2 = nn.GroupNorm(8, out_ch)
         self.bnorm2 = nn.BatchNorm2d(out_ch)
-        # self.relu = nn.ReLU()
+        self.relu = nn.ReLU()
         # self.relu = nn.SiLU()
-        self.relu = nn.LeakyReLU()
+        # self.relu = nn.LeakyReLU()
 
     def forward(self, x, t):
         # First Conv
@@ -97,8 +97,8 @@ class LatentConditionalUnet(nn.Module):
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
             # nn.SiLU(),
-            # nn.ReLU(),
-            nn.LeakyReLU(),
+            nn.ReLU(),
+            # nn.LeakyReLU(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)
 

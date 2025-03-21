@@ -13,7 +13,8 @@ from torch.optim import Adam, AdamW
 from latentmodelattn import LatentConditionalUnet
 # from latentmodel import LatentConditionalUnet
 import tqdm
-from autoencoder import Autoencoder
+# from autoencoder import Autoencoder
+from vae import Autoencoder, Encoder, Decoder
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a latent model")
@@ -24,6 +25,7 @@ def parse_args():
     parser.add_argument("--checkpoints", type=str, default="./latentcheckpoints", help="Path to save checkpoints")
     parser.add_argument("-p", action="store_true", help="Disable print")
     parser.add_argument("-l", action="store_true", help="Enable log")
+    parser.add_argument("--lsf", type=float, default=1.0, help="Latent scaling factor")
     return parser.parse_args()
 
 # IMG_SIZE = (64, 144)
@@ -138,7 +140,7 @@ def print_gpu_memory():
 
 
 @torch.no_grad()
-def generate(idx='', device="cpu"):
+def generate(idx='', device="cpu", autoencoder=None):
     latent_dim = 4
     img_size = (IMG_SIZE[0] // 4, IMG_SIZE[1] // 4)
     class_labels = torch.arange(7, dtype=torch.long, device=device)
@@ -154,12 +156,19 @@ def generate(idx='', device="cpu"):
     for i in range(7):
         z = img[i].unsqueeze(0)
         with torch.no_grad():
-            image = decoder(z)
+            # image = decoder(z)
+            image = autoencoder.decode(z / args.lsf)
         new_img[i] = image
     
     fig_path = args.save + f"/generated/{args.tag}/"
     os.makedirs(fig_path, exist_ok=True)
     torchvision.utils.save_image(new_img, f"{fig_path}{idx}.png", normalize=True)
+
+# def encode_images(images, autoencoder):
+#     return args.lsf * autoencoder(images).sample()
+
+# def decode_latent_vectors(z, autoencoder):
+#     return autoencoder.decode(z / args.lsf)
 
 if __name__ == "__main__":
     
@@ -173,8 +182,36 @@ if __name__ == "__main__":
     # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
     epochs = EPOCHS
-    autoencoder = Autoencoder(latent_dim=4).to(device)    
-    autoencoder.load_state_dict(torch.load(os.path.join(args.save,"autoencoder.pth")))  # Load trained model
+
+    encoder = Encoder(
+        channels=128,
+        channel_multipliers=[1, 2, 4],
+        n_resnet_blocks=2,
+        in_channels=1,
+        z_channels=4
+    )
+    
+    decoder = Decoder(
+        channels=128,
+        channel_multipliers=[1, 2, 4],
+        n_resnet_blocks=2,
+        out_channels=1,
+        z_channels=4
+    )
+    
+    # Create autoencoder
+    autoencoder = Autoencoder(
+        encoder=encoder,
+        decoder=decoder,
+        emb_channels=4,
+        z_channels=4
+    )
+    autoencoder.to(device)
+    autoencoder.load_state_dict(torch.load(os.path.join(args.save,"vae.pth")))  # Load trained model
+
+    # autoencoder = Autoencoder(latent_dim=4).to(device)    
+    # autoencoder.load_state_dict(torch.load(os.path.join(args.save,"autoencoder.pth")))  # Load trained model
+    
     autoencoder.eval()
     
     start_epoch = 0
@@ -190,8 +227,8 @@ if __name__ == "__main__":
     
     data = load_transformed_dataset(adjust_image_size(IMG_SIZE))
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    encoder = autoencoder.encoder  # To encode images to latent space
-    decoder = autoencoder.decoder  # To decode latent vectors back to images
+    # encoder = autoencoder.encoder  # To encode images to latent space
+    # decoder = autoencoder.decoder  # To decode latent vectors back to images
             
     for epoch in range(start_epoch, epochs):
         with tqdm.tqdm(total=len(dataloader), desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch', disable= (args.p)) as pbar:
@@ -202,7 +239,8 @@ if __name__ == "__main__":
 
                 # Convert images to latent space
                 with torch.no_grad():  
-                    z_0 = encoder(images)  # Encode image to latent space
+                    # z_0 = encoder(images)  # Encode image to latent space
+                    z_0 = args.lsf * autoencoder.encode(images).sample()
 
                 t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
                 loss = get_loss(model, z_0, t, class_labels, device)
@@ -216,7 +254,8 @@ if __name__ == "__main__":
 
             # Save model checkpoint every 10 epochs
             if epoch % 10 == 9 and epoch > 1:
-                generate(idx=epoch+1, device=device)
+                # generate(idx=epoch+1, device=device)
+                generate(idx=epoch+1, device=device, autoencoder=autoencoder)
                 save_path = os.path.join(args.save, args.checkpoints)
                 torch.save(model.state_dict(), os.path.join(save_path, "model.pth"))
                 torch.save({

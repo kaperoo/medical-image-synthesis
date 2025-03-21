@@ -59,6 +59,7 @@ venv.bak/
 *.pth
 checkpoints/
 latentcheckpoints/
+autocheckpoints/
 
 # Logs
 log.txt
