@@ -94,16 +94,16 @@ def train(args):
     
     # Initialize model components
     encoder = Encoder(
-        channels=64,
-        channel_multipliers=[1, 2, 4, 8],
+        channels=128,
+        channel_multipliers=[1, 2, 4],
         n_resnet_blocks=2,
         in_channels=args.in_channels,
         z_channels=args.z_channels
     )
     
     decoder = Decoder(
-        channels=64,
-        channel_multipliers=[1, 2, 4, 8],
+        channels=128,
+        channel_multipliers=[1, 2, 4],
         n_resnet_blocks=2,
         out_channels=args.in_channels,
         z_channels=args.z_channels
@@ -116,6 +116,10 @@ def train(args):
         emb_channels=args.emb_channels,
         z_channels=args.z_channels
     )
+
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
+        
     model = model.to(device)
     
     # Define optimizer
