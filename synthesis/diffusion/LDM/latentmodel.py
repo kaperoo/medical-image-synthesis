@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import nn
 import math
 import sys
-from attention import MultiHeadSelfAttention, MultiHeadCrossAttention, CBAM
+from attention import MultiHeadSelfAttention, CBAM
 
 sys.path.append(sys.argv[0])
 
@@ -21,75 +21,89 @@ def normalization(channels):
     return nn.GroupNorm(32, channels)
     
 class Block(nn.Module):
-    def __init__(self, in_ch, out_ch, time_emb_dim, up=False):
+    def __init__(self, in_ch, out_ch, time_emb_dim, up=False, num_res_blocks=2):
         super().__init__()
         self.time_mlp = nn.Linear(time_emb_dim, out_ch)
         self.up = up
         if up:
             self.conv1 = nn.Conv2d(2 * in_ch, out_ch, 3, padding=1)
-            # self.transform = nn.ConvTranspose2d(out_ch, out_ch, 4, 2, 1)
             self.transform = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                # nn.BatchNorm2d(out_ch),
                 normalization(out_ch),
-                # nn.ReLU(),
-                # nn.SiLU(),
-                # nn.LeakyReLU(),
                 Activation(),
             )
             
         else:
             self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
-            # self.transform = nn.Conv2d(out_ch, out_ch, 4, 2, 1)
-            # self.transform = nn.AdaptiveAvgPool2d((out_ch, out_ch))
-            # self.transform = nn.AvgPool2d(2)
             self.transform = nn.Sequential(
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
-                # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
-                # nn.BatchNorm2d(out_ch),
                 normalization(out_ch),
-                # nn.ReLU(),
-                # nn.SiLU(),
-                # nn.LeakyReLU(),
                 Activation(),
                 nn.AvgPool2d(2),
             )
+
+        self.res_blocks = nn.ModuleList([
+            ResnetBlock(out_ch, dropout=0.1)
+            for _ in range(num_res_blocks)
+        ])
             
-        self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        # self.bnorm1 = nn.GroupNorm(8, out_ch)
-        # self.bnorm1 = nn.BatchNorm2d(out_ch)
         self.bnorm1 = normalization(out_ch)
-        # self.bnorm2 = nn.GroupNorm(8, out_ch)
-        # self.bnorm2 = nn.BatchNorm2d(out_ch)
         self.bnorm2 = normalization(out_ch)
-        # self.relu = nn.ReLU()
-        # self.relu = nn.SiLU()
-        # self.relu = nn.LeakyReLU()
         self.relu = Activation()
 
         self.attn = CBAM(out_ch)
 
     def forward(self, x, t):
-        # First Conv
         h = self.bnorm1(self.relu(self.conv1(x)))
-        # Time embedding
+        
         time_emb = self.relu(self.time_mlp(t))
-        # Extend last 2 dimensions
-        # time_emb = time_emb[(...,) + (None,) * 2]
         time_emb = time_emb.view(time_emb.shape[0], time_emb.shape[1], 1, 1)
-        # Add time channel
         h = h + time_emb
-        # Second Conv
-        h = self.bnorm2(self.relu(self.conv2(h)))
-        # Attention
+        
         if self.up:
+            # For upsampling: transform first, then apply ResNet blocks
+            h = self.transform(h)
+            for block in self.res_blocks:
+                h = block(h)
             h = self.attn(h)
-        # h = self.attn(h)
-        # Down or Upsample
-        return self.transform(h)
+        else:
+            # For downsampling: apply ResNet blocks first, then transform
+            for block in self.res_blocks:
+                h = block(h)
+            h = self.transform(h)
+        
+        return h
 
+
+class ResnetBlock(nn.Module):
+    def __init__(self, in_channels, out_channels=None, dropout=0.0):
+        super().__init__()
+        out_channels = in_channels if out_channels is None else out_channels
+        
+        self.in_layers = nn.Sequential(
+            normalization(in_channels),
+            Activation(),
+            nn.Conv2d(in_channels, out_channels, 3, padding=1)
+        )
+        
+        self.out_layers = nn.Sequential(
+            normalization(out_channels),
+            Activation(),
+            nn.Dropout(dropout),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1)
+        )
+        
+        # Skip connection
+        if in_channels != out_channels:
+            self.skip_connection = nn.Conv2d(in_channels, out_channels, 1)
+        else:
+            self.skip_connection = nn.Identity()
+            
+    def forward(self, x):
+        h = self.in_layers(x)
+        h = self.out_layers(h)
+        return h + self.skip_connection(x)
 
 class SinusoidalPositionEmbeddings(nn.Module):
     def __init__(self, dim):
@@ -116,9 +130,6 @@ class LatentConditionalUnet(nn.Module):
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
-            # nn.SiLU(),
-            # nn.ReLU(),
-            # nn.LeakyReLU(),
             Activation(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)
@@ -132,7 +143,12 @@ class LatentConditionalUnet(nn.Module):
             for i in range(len(down_channels) - 1)
         ])
         
-        self.bottleneck = MultiHeadSelfAttention(down_channels[-1])
+        self.bottleneck = nn.Sequential(
+            ResnetBlock(down_channels[-1]),
+            MultiHeadSelfAttention(down_channels[-1]),
+            ResnetBlock(down_channels[-1])
+        )
+        # self.bottleneck = MultiHeadSelfAttention(down_channels[-1])
 
         # Upsampling blocks
         self.ups = nn.ModuleList([
@@ -140,21 +156,12 @@ class LatentConditionalUnet(nn.Module):
             for i in range(len(up_channels) - 1)
         ])
 
-        # self.cross_attns = nn.ModuleList([
-        #     MultiHeadCrossAttention(up_channels[0], up_channels[1]),
-        #     MultiHeadCrossAttention(up_channels[1], up_channels[2]),
-        #     MultiHeadCrossAttention(up_channels[2], up_channels[3]),
-        #     MultiHeadCrossAttention(up_channels[3], up_channels[4]),
-        # ])
-        
-        # self.cross_attns = nn.ModuleList([
-        #     MultiHeadCrossAttention(up_channels[0], up_channels[0]),
-        #     MultiHeadCrossAttention(up_channels[1], up_channels[1]),
-        #     MultiHeadCrossAttention(up_channels[2], up_channels[2]),
-        #     MultiHeadCrossAttention(up_channels[3], up_channels[3]),
-        # ])
-
-        self.output = nn.Conv2d(up_channels[-1], latent_dim, 1)
+        # self.output = nn.Conv2d(up_channels[-1], latent_dim, 1)
+        self.output = nn.Sequential(
+            normalization(up_channels[-1]),
+            Activation(),
+            nn.Conv2d(up_channels[-1], latent_dim, 3, padding=1),
+        )
 
     def forward(self, z, timestep, class_label):
         t = self.time_mlp(timestep)
@@ -166,13 +173,10 @@ class LatentConditionalUnet(nn.Module):
         
         # UNet processing
         residual_inputs = []
-        # residual_inputs.append(z)
         for down in self.downs:
             z = down(z, t)
             residual_inputs.append(z)
         
-        # residual_inputs.pop()
-
         z = self.bottleneck(z)
 
         for i, up in enumerate(self.ups):
@@ -180,10 +184,6 @@ class LatentConditionalUnet(nn.Module):
             if z.shape[2:] != residual_z.shape[2:]:
                 z = F.interpolate(z, size=residual_z.shape[2:], mode="bilinear", align_corners=False)
             
-            # z = self.cross_attns[i](z, residual_z)
-            # filtered_z = self.cross_attns[i](z, residual_z)
-            
-            # z = torch.cat((z, filtered_z), dim=1)
             z = torch.cat((z, residual_z), dim=1)
             
             z = up(z, t)

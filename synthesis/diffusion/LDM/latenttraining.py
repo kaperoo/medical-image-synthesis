@@ -198,8 +198,8 @@ if __name__ == "__main__":
         z_channels=4
     )
     
-    # if torch.cuda.device_count() > 1:
-    #     model = torch.nn.DataParallel(model)
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
     #     autoencoder = torch.nn.DataParallel(autoencoder)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
