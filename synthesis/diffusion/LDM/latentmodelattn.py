@@ -21,7 +21,7 @@ class Block(nn.Module):
             self.conv1 = nn.Conv2d(2 * in_ch, out_ch, 3, padding=1)
             # self.transform = nn.ConvTranspose2d(out_ch, out_ch, 4, 2, 1)
             self.transform = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
@@ -36,12 +36,12 @@ class Block(nn.Module):
             # self.transform = nn.AdaptiveAvgPool2d((out_ch, out_ch))
             # self.transform = nn.AvgPool2d(2)
             self.transform = nn.Sequential(
-                nn.AvgPool2d(2),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
                 # nn.ReLU(),
                 nn.SiLU(),
+                nn.AvgPool2d(2),
                 # nn.LeakyReLU(),
             )
             

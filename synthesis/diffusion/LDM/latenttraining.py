@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument("--checkpoints", type=str, default="./latentcheckpoints", help="Path to save checkpoints")
     parser.add_argument("-p", action="store_true", help="Disable print")
     parser.add_argument("-l", action="store_true", help="Enable log")
-    parser.add_argument("--lsf", type=float, default=1.0, help="Latent scaling factor")
+    parser.add_argument("--lsf", type=float, default=0.18215, help="Latent scaling factor")
     return parser.parse_args()
 
 # IMG_SIZE = (64, 144)
@@ -129,8 +129,8 @@ def get_loss(model, z_0, t, class_labels, device):
     """
     z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
     noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
-    return F.l1_loss(noise, noise_pred)  # Compute L1 loss
-    # return F.mse_loss(noise, noise_pred)  # Compute MSE loss
+    # return F.l1_loss(noise, noise_pred)  # Compute L1 loss
+    return F.mse_loss(noise, noise_pred)  # Compute MSE loss
 
 
 def print_gpu_memory():
@@ -199,15 +199,22 @@ if __name__ == "__main__":
         z_channels=4
     )
     
-    if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
-        autoencoder = torch.nn.DataParallel(autoencoder)
+    # if torch.cuda.device_count() > 1:
+    #     model = torch.nn.DataParallel(model)
+    #     autoencoder = torch.nn.DataParallel(autoencoder)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # print(f"Using {device}")
     
     model.to(device)
     autoencoder.to(device)
+    
+    # state_dict = torch.load(os.path.join(args.save,"vae.pth"))
+    # new_state_dict = {}
+    # for k, v in state_dict.items():
+    #    new_state_dict["module." + k] = v
+    # autoencoder.load_state_dict(new_state_dict)
+
     autoencoder.load_state_dict(torch.load(os.path.join(args.save,"vae.pth")))  # Load trained model
     
     # optimizer = Adam(model.parameters(), lr=LEARING_RATE)

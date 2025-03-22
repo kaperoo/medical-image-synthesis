@@ -58,12 +58,14 @@ class MultiHeadSelfAttention(nn.Module):
         super(MultiHeadSelfAttention, self).__init__()
         
         self.pos_embed = PositionalEncodingPermute2D(channels)
+        self.norm = nn.LayerNorm(channels)
         self.mha = nn.MultiheadAttention(channels, num_heads)
 
     def forward(self, x):
         b, c, h, w = x.shape
         x = x + self.pos_embed(x)
         x = x.reshape(b, c, h * w).permute(0, 2, 1)
+        x = self.norm(x)
         x, _ = self.mha(x, x, x, need_weights=False)
         x = x.permute(0, 2, 1).reshape(b, c, h, w)
         return x
