@@ -3,6 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+class Activation(nn.ReLU):
+    def forward(self, x):
+        return super().forward(x)
+    
+def normalization(channels):
+    # return nn.BatchNorm2d(channels)
+    return nn.GroupNorm(32, channels)
+
 class PositionalEncoding2D(nn.Module):
     def __init__(self, channels):
         """
@@ -81,31 +89,38 @@ class MultiHeadCrossAttention(nn.Module):
 
         self.xpre = nn.Sequential(
             nn.Conv2d(x_channels, y_channels, 1),
-            nn.BatchNorm2d(y_channels),
+            # nn.BatchNorm2d(y_channels),
+            normalization(y_channels),
             # nn.ReLU()
-            nn.SiLU()
+            # nn.SiLU()
+            Activation()
         )
 
         self.ypre = nn.Sequential(
             # nn.MaxPool2d(2),
             nn.Conv2d(y_channels, y_channels, 1),
-            nn.BatchNorm2d(y_channels),
+            # nn.BatchNorm2d(y_channels),
+            normalization(y_channels),
             # nn.ReLU(),
-            nn.SiLU()
+            # nn.SiLU()
+            Activation()
         )
 
         self.xskip = nn.Sequential(
             # nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(x_channels, x_channels, 3, padding=1),
             nn.Conv2d(x_channels, y_channels, 1),
-            nn.BatchNorm2d(y_channels),
+            # nn.BatchNorm2d(y_channels),
+            normalization(y_channels),
             # nn.ReLU()
-            nn.SiLU()
+            # nn.SiLU()
+            Activation()
         )
 
         self.asigm = nn.Sequential(
             nn.Conv2d(y_channels, y_channels, 1),
-            nn.BatchNorm2d(y_channels),
+            # nn.BatchNorm2d(y_channels),
+            normalization(y_channels),
             nn.Sigmoid(),
             # nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
         )
@@ -146,7 +161,8 @@ class BasicConv(nn.Module):
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
         self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
         # self.relu = nn.ReLU() if relu else None
-        self.relu = nn.SiLU() if relu else None
+        # self.relu = nn.SiLU() if relu else None
+        self.relu = Activation() if relu else None
 
     def forward(self, x):
         x = self.conv(x)
@@ -168,7 +184,8 @@ class ChannelGate(nn.Module):
             Flatten(),
             nn.Linear(gate_channels, gate_channels // reduction_ratio),
             # nn.ReLU(),
-            nn.SiLU(),
+            # nn.SiLU(),
+            Activation(),
             nn.Linear(gate_channels // reduction_ratio, gate_channels)
             )
         self.pool_types = pool_types

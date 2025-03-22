@@ -10,8 +10,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam, AdamW
-from latentmodelattn import LatentConditionalUnet
-# from latentmodel import LatentConditionalUnet
+from latentmodel import LatentConditionalUnet
 import tqdm
 # from autoencoder import Autoencoder
 from vae import Autoencoder, Encoder, Decoder
@@ -34,7 +33,7 @@ IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
 LEARING_RATE = 1e-3
 EPOCHS = 1000
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 T = 1000
 
 def linear_beta_schedule(timesteps, start=0.0001, end=0.02):
@@ -129,8 +128,8 @@ def get_loss(model, z_0, t, class_labels, device):
     """
     z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
     noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
-    # return F.l1_loss(noise, noise_pred)  # Compute L1 loss
-    return F.mse_loss(noise, noise_pred)  # Compute MSE loss
+    return F.l1_loss(noise, noise_pred)  # Compute L1 loss
+    # return F.mse_loss(noise, noise_pred)  # Compute MSE loss
 
 
 def print_gpu_memory():
