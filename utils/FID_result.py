@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 
 BATCH_SIZE = 8
 
-FAKE_INPUT_PATH = "fake_data"
-REAL_INPUT_PATH = "augmented_data"
+FAKE_INPUT_PATH = "utils/WGAN-GP"
+#FAKE_INPUT_PATH = "WGAN_fake_data"
+REAL_INPUT_PATH = "utils/augmented_data"
 CATEGORISED = False
 
 transform = transforms.Compose([
@@ -22,13 +23,17 @@ def create_dataloaders(dataset, batch_size=16):
     class_dataloaders = {}
     idx_to_class = {v: k for k, v in dataset.class_to_idx.items()}
     class_indices = {class_name: [] for class_name in dataset.classes}
-    for idx, (_, class_idx) in enumerate(dataset.imgs):
+    
+    # Collect indices for each class
+    for idx in range(len(dataset)):
+        _, class_idx = dataset[idx]  # Use dataset directly to get the label
         class_name = idx_to_class[class_idx]
         class_indices[class_name].append(idx)
 
+    # Create a dataloader for each class
     for class_name, indices in class_indices.items():
-        subset = Subset(real_dataset, indices)  # Create subset for each class
-        class_dataloaders[class_name] = DataLoader(subset, batch_size=batch_size, shuffle=True)
+        subset = Subset(dataset, indices)  # Create a subset for each class
+        class_dataloaders[class_name] = DataLoader(subset, batch_size=batch_size, shuffle=False)
 
     return class_dataloaders
 
@@ -53,6 +58,8 @@ def get_moments(samples, model):
         count = 0
 
         for idx, (inp, _) in enumerate(samples):
+            #print(inp)
+            #print(inp.shape)
             pred = model(inp.to(device))
 
             X_sum += pred.sum(dim=0, keepdim=True).T
@@ -95,6 +102,8 @@ if __name__ == '__main__':
     if CATEGORISED:
         for key in real_class_dataloader:
             print(key)
+            #data_iter = iter(real_class_dataloader[key])
+            #print(next(data_iter))
             m_real_data, C_real_data = get_moments(real_class_dataloader[key], model)
             m_fake_data, C_fake_data = get_moments(fake_class_dataloader[key], model)
 
