@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import nn
 import math
 import sys
-from attention import MultiHeadSelfAttention, MultiHeadCrossAttention
+from attention import MultiHeadSelfAttention, MultiHeadCrossAttention, CBAM
 
 sys.path.append(sys.argv[0])
 
@@ -16,6 +16,7 @@ class Block(nn.Module):
     def __init__(self, in_ch, out_ch, time_emb_dim, up=False):
         super().__init__()
         self.time_mlp = nn.Linear(time_emb_dim, out_ch)
+        self.up = up
         if up:
             self.conv1 = nn.Conv2d(2 * in_ch, out_ch, 3, padding=1)
             # self.transform = nn.ConvTranspose2d(out_ch, out_ch, 4, 2, 1)
@@ -24,8 +25,8 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
-                nn.ReLU(),
-                # nn.SiLU(),
+                # nn.ReLU(),
+                nn.SiLU(),
                 # nn.LeakyReLU(),
             )
             
@@ -39,8 +40,8 @@ class Block(nn.Module):
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 # nn.GroupNorm(8, out_ch), # GroupNorm instead of BatchNorm2d
                 nn.BatchNorm2d(out_ch),
-                nn.ReLU(),
-                # nn.SiLU(),
+                # nn.ReLU(),
+                nn.SiLU(),
                 # nn.LeakyReLU(),
             )
             
@@ -49,9 +50,11 @@ class Block(nn.Module):
         self.bnorm1 = nn.BatchNorm2d(out_ch)
         # self.bnorm2 = nn.GroupNorm(8, out_ch)
         self.bnorm2 = nn.BatchNorm2d(out_ch)
-        self.relu = nn.ReLU()
-        # self.relu = nn.SiLU()
+        # self.relu = nn.ReLU()
+        self.relu = nn.SiLU()
         # self.relu = nn.LeakyReLU()
+
+        self.attn = CBAM(out_ch)
 
     def forward(self, x, t):
         # First Conv
@@ -66,6 +69,8 @@ class Block(nn.Module):
         # Second Conv
         h = self.bnorm2(self.relu(self.conv2(h)))
         # Attention
+        if self.up:
+            h = self.attn(h)
         # h = self.attn(h)
         # Down or Upsample
         return self.transform(h)
@@ -96,8 +101,8 @@ class LatentConditionalUnet(nn.Module):
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
-            # nn.SiLU(),
-            nn.ReLU(),
+            nn.SiLU(),
+            # nn.ReLU(),
             # nn.LeakyReLU(),
         )
         self.class_embedding = nn.Embedding(num_classes, time_emb_dim)

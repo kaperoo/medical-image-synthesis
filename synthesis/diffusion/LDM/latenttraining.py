@@ -176,13 +176,6 @@ if __name__ == "__main__":
     
     model = LatentConditionalUnet()
     
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    # print(f"Using {device}")
-    model.to(device)
-    # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
-    optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
-    epochs = EPOCHS
-
     encoder = Encoder(
         channels=128,
         channel_multipliers=[1, 2, 4],
@@ -199,15 +192,27 @@ if __name__ == "__main__":
         z_channels=4
     )
     
-    # Create autoencoder
     autoencoder = Autoencoder(
         encoder=encoder,
         decoder=decoder,
         emb_channels=4,
         z_channels=4
     )
+    
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
+        autoencoder = torch.nn.DataParallel(autoencoder)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # print(f"Using {device}")
+    
+    model.to(device)
     autoencoder.to(device)
     autoencoder.load_state_dict(torch.load(os.path.join(args.save,"vae.pth")))  # Load trained model
+    
+    # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
+    optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
+    epochs = EPOCHS
 
     # autoencoder = Autoencoder(latent_dim=4).to(device)    
     # autoencoder.load_state_dict(torch.load(os.path.join(args.save,"autoencoder.pth")))  # Load trained model
