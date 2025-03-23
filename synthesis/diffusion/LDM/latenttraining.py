@@ -29,7 +29,7 @@ def parse_args():
 
 IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
-LEARING_RATE = 1e-2
+LEARING_RATE = 1e-3
 EPOCHS = 1000
 BATCH_SIZE = 8
 T = 1000
@@ -126,7 +126,8 @@ def get_loss(model, z_0, t, class_labels, device):
     """
     z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
     noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
-    return F.l1_loss(noise, noise_pred)  # Compute L1 loss
+    return F.smooth_l1_loss(noise, noise_pred, beta=0.1)  # Compute L1 loss
+    # return F.l1_loss(noise, noise_pred)  # Compute L1 loss
     # return F.mse_loss(noise, noise_pred)  # Compute MSE loss
 
 
@@ -210,7 +211,7 @@ if __name__ == "__main__":
     
     # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
-    scheduler = CosineAnnealingLR(optimizer, EPOCHS, eta_min=1e-6)
+    scheduler = CosineAnnealingLR(optimizer, 500, eta_min=1e-6)
     epochs = EPOCHS
 
     autoencoder.eval()
@@ -271,6 +272,7 @@ if __name__ == "__main__":
                 else:
                     with open(log_path, "a") as f:
                         f.write(f"Epoch {epoch}, Loss: {loss.item()}\n")
+        scheduler.step()
                 
 
     # Final save

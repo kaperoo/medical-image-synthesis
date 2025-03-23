@@ -71,6 +71,7 @@ class Block(nn.Module):
             # For downsampling: apply ResNet blocks first, then transform
             for block in self.res_blocks:
                 h = block(h)
+            # TODO: More attention?
             h = self.transform(h)
         
         return h
