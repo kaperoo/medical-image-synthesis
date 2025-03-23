@@ -10,9 +10,9 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam, AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from latentmodel import LatentConditionalUnet
 import tqdm
-# from autoencoder import Autoencoder
 from vae import Autoencoder, Encoder, Decoder
 
 def parse_args():
@@ -27,11 +27,9 @@ def parse_args():
     parser.add_argument("--lsf", type=float, default=0.18215, help="Latent scaling factor")
     return parser.parse_args()
 
-# IMG_SIZE = (64, 144)
-# IMG_SIZE = (128, 288)
 IMG_SIZE = (128, 352)
 # IMG_SIZE = (208, 560)
-LEARING_RATE = 1e-3
+LEARING_RATE = 1e-2
 EPOCHS = 1000
 BATCH_SIZE = 8
 T = 1000
@@ -155,7 +153,6 @@ def generate(idx='', device="cpu", autoencoder=None):
     for i in range(7):
         z = img[i].unsqueeze(0)
         with torch.no_grad():
-            # image = decoder(z)
             image = autoencoder.decode(z / args.lsf)
         new_img[i] = image
     
@@ -163,11 +160,6 @@ def generate(idx='', device="cpu", autoencoder=None):
     os.makedirs(fig_path, exist_ok=True)
     torchvision.utils.save_image(new_img, f"{fig_path}{idx}.png", normalize=True)
 
-# def encode_images(images, autoencoder):
-#     return args.lsf * autoencoder(images).sample()
-
-# def decode_latent_vectors(z, autoencoder):
-#     return autoencoder.decode(z / args.lsf)
 
 if __name__ == "__main__":
     
@@ -218,11 +210,9 @@ if __name__ == "__main__":
     
     # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
+    scheduler = CosineAnnealingLR(optimizer, EPOCHS, eta_min=1e-6)
     epochs = EPOCHS
 
-    # autoencoder = Autoencoder(latent_dim=4).to(device)    
-    # autoencoder.load_state_dict(torch.load(os.path.join(args.save,"autoencoder.pth")))  # Load trained model
-    
     autoencoder.eval()
     
     start_epoch = 0
@@ -238,8 +228,6 @@ if __name__ == "__main__":
     
     data = load_transformed_dataset(adjust_image_size(IMG_SIZE))
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    # encoder = autoencoder.encoder  # To encode images to latent space
-    # decoder = autoencoder.decoder  # To decode latent vectors back to images
             
     for epoch in range(start_epoch, epochs):
         with tqdm.tqdm(total=len(dataloader), desc=f"Epoch {epoch + 1}/{EPOCHS}", unit='batch', disable= (args.p)) as pbar:
@@ -250,7 +238,6 @@ if __name__ == "__main__":
 
                 # Convert images to latent space
                 with torch.no_grad():  
-                    # z_0 = encoder(images)  # Encode image to latent space
                     z_0 = args.lsf * autoencoder.encode(images).sample()
 
                 t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
@@ -265,9 +252,9 @@ if __name__ == "__main__":
 
             # Save model checkpoint every 10 epochs
             if epoch % 10 == 9 and epoch > 1:
-                # generate(idx=epoch+1, device=device)
                 generate(idx=epoch+1, device=device, autoencoder=autoencoder)
-                save_path = os.path.join(args.save, args.checkpoints)
+                # save_path = os.path.join(args.save, args.checkpoints)
+                save_path = os.path.join(args.save, args.tag)
                 torch.save(model.state_dict(), os.path.join(save_path, "model.pth"))
                 torch.save({
                     'epoch': epoch,
