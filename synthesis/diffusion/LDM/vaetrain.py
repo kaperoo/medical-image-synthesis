@@ -45,9 +45,9 @@ def visualize_reconstruction(model, data_loader, device, save_path):
         images = batch[0].to(device)
         
         # Get reconstructed images
-        distribution = model.encode(images)
+        distribution = model.module.encode(images)
         z = distribution.sample()
-        reconstructed = model.decode(z)
+        reconstructed = model.module.decode(z)
         
         # Plot original vs reconstructed
         fig, axes = plt.subplots(2, 8, figsize=(16, 4))
@@ -145,7 +145,7 @@ def train(args):
             z = distribution.sample()
             
             # Decode the sampled embedding
-            reconstructed = model.decode(z)
+            reconstructed = model.module.decode(z)
             
             # Calculate losses
             rec_loss = reconstruction_loss(reconstructed, images)
