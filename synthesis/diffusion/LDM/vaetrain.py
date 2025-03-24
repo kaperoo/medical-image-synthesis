@@ -139,7 +139,7 @@ def train(args):
             optimizer.zero_grad()
             
             # Encode images to get distribution
-            distribution = model.encode(images)
+            distribution = model.module.encode(images)
             
             # Sample from the distribution
             z = distribution.sample()
