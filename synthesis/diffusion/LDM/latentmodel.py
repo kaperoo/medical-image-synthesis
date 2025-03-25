@@ -72,6 +72,7 @@ class Block(nn.Module):
             for block in self.res_blocks:
                 h = block(h)
             # TODO: More attention?
+            # h = self.attn(h)
             h = self.transform(h)
         
         return h
@@ -95,7 +96,6 @@ class ResnetBlock(nn.Module):
             nn.Conv2d(out_channels, out_channels, 3, padding=1)
         )
         
-        # Skip connection
         if in_channels != out_channels:
             self.skip_connection = nn.Conv2d(in_channels, out_channels, 1)
         else:
@@ -149,7 +149,6 @@ class LatentConditionalUnet(nn.Module):
             MultiHeadSelfAttention(down_channels[-1]),
             ResnetBlock(down_channels[-1])
         )
-        # self.bottleneck = MultiHeadSelfAttention(down_channels[-1])
 
         # Upsampling blocks
         self.ups = nn.ModuleList([
@@ -157,7 +156,6 @@ class LatentConditionalUnet(nn.Module):
             for i in range(len(up_channels) - 1)
         ])
 
-        # self.output = nn.Conv2d(up_channels[-1], latent_dim, 1)
         self.output = nn.Sequential(
             normalization(up_channels[-1]),
             Activation(),
@@ -178,6 +176,7 @@ class LatentConditionalUnet(nn.Module):
             z = down(z, t)
             residual_inputs.append(z)
         
+        # TODO: Residual connections in bottleneck?
         z = self.bottleneck(z)
 
         for i, up in enumerate(self.ups):

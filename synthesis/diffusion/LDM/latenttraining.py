@@ -19,9 +19,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train a latent model")
     parser.add_argument("--data", type=str, default="../../../data/augmented_data", help="Path to dataset")
     parser.add_argument("--save", type=str, default=".", help="Path to save model")
-    parser.add_argument("--tag", type=str, default="latent", help="Tag for saving model")
+    parser.add_argument("--tag", type=str, default="latentcheckpoints", help="Tag for saving model")
     parser.add_argument("--resume", action="store_true", help="Resume training")
-    parser.add_argument("--checkpoints", type=str, default="./latentcheckpoints", help="Path to save checkpoints")
     parser.add_argument("-p", action="store_true", help="Disable print")
     parser.add_argument("-l", action="store_true", help="Enable log")
     parser.add_argument("--lsf", type=float, default=0.18215, help="Latent scaling factor")
@@ -126,8 +125,9 @@ def get_loss(model, z_0, t, class_labels, device):
     """
     z_noisy, noise = forward_diffusion_sample(z_0, t, device)  # Add noise in latent space
     noise_pred = model(z_noisy, t, class_labels)  # Predict noise in latent space
-    return F.smooth_l1_loss(noise, noise_pred, beta=0.1)  # Compute L1 loss
-    # return F.l1_loss(noise, noise_pred)  # Compute L1 loss
+    #TODO: test smooth_l1_loss
+    # return F.smooth_l1_loss(noise, noise_pred, beta=0.1)  # Compute L1 loss
+    return F.l1_loss(noise, noise_pred)  # Compute L1 loss
     # return F.mse_loss(noise, noise_pred)  # Compute MSE loss
 
 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
-    #     autoencoder = torch.nn.DataParallel(autoencoder)
+        autoencoder = torch.nn.DataParallel(autoencoder)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # print(f"Using {device}")
@@ -201,15 +201,8 @@ if __name__ == "__main__":
     model.to(device)
     autoencoder.to(device)
     
-    # state_dict = torch.load(os.path.join(args.save,"vae.pth"))
-    # new_state_dict = {}
-    # for k, v in state_dict.items():
-    #    new_state_dict["module." + k] = v
-    # autoencoder.load_state_dict(new_state_dict)
-
     autoencoder.load_state_dict(torch.load(os.path.join(args.save,"vae.pth")))  # Load trained model
     
-    # optimizer = Adam(model.parameters(), lr=LEARING_RATE)
     optimizer = AdamW(model.parameters(), lr=LEARING_RATE)
     scheduler = CosineAnnealingLR(optimizer, 500, eta_min=1e-6)
     epochs = EPOCHS
@@ -220,7 +213,7 @@ if __name__ == "__main__":
     
     os.makedirs(os.path.join(args.save, args.tag), exist_ok=True)
     if args.resume:
-        save_path = os.path.join(args.save, args.checkpoints)
+        save_path = os.path.join(args.save, args.tag)
         checkpoint = torch.load(os.path.join(save_path, "state.pth"))
         start_epoch = checkpoint['epoch']
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -254,7 +247,6 @@ if __name__ == "__main__":
             # Save model checkpoint every 10 epochs
             if epoch % 10 == 9 and epoch > 1:
                 generate(idx=epoch+1, device=device, autoencoder=autoencoder)
-                # save_path = os.path.join(args.save, args.checkpoints)
                 save_path = os.path.join(args.save, args.tag)
                 torch.save(model.state_dict(), os.path.join(save_path, "model.pth"))
                 torch.save({
