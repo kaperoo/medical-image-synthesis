@@ -154,7 +154,7 @@ def generate(idx='', device="cpu", autoencoder=None):
     for i in range(7):
         z = img[i].unsqueeze(0)
         with torch.no_grad():
-            image = autoencoder.decode(z / args.lsf)
+            image = autoencoder.module.decode(z / args.lsf)
         new_img[i] = image
     
     fig_path = args.save + f"/generated/{args.tag}/"
@@ -232,7 +232,7 @@ if __name__ == "__main__":
 
                 # Convert images to latent space
                 with torch.no_grad():  
-                    z_0 = args.lsf * autoencoder.encode(images).sample()
+                    z_0 = args.lsf * autoencoder.module.encode(images).sample()
 
                 t = torch.randint(0, T, (BATCH_SIZE,), device=device).long()
                 loss = get_loss(model, z_0, t, class_labels, device)
@@ -248,7 +248,10 @@ if __name__ == "__main__":
             if epoch % 10 == 9 and epoch > 1:
                 generate(idx=epoch+1, device=device, autoencoder=autoencoder)
                 save_path = os.path.join(args.save, args.tag)
-                torch.save(model.state_dict(), os.path.join(save_path, "model.pth"))
+                if (epoch +1 ) % 100 == 0:
+                    torch.save(model.state_dict(), os.path.join(save_path, f"model_{epoch+1}.pth")) 
+                else:
+                    torch.save(model.state_dict(), os.path.join(save_path, "model.pth"))
                 torch.save({
                     'epoch': epoch,
                     'optimizer_state_dict': optimizer.state_dict(),
