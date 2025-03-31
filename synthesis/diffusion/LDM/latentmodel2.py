@@ -25,6 +25,7 @@ class Block(nn.Module):
         super().__init__()
         self.time_mlp = nn.Linear(time_emb_dim, time_emb_dim)
         self.trans = trans
+        self.up = up
         if up:
             # self.conv1 = nn.Conv2d(2 * in_ch, out_ch, 3, padding=1)
             self.transform = nn.Sequential(
@@ -44,14 +45,14 @@ class Block(nn.Module):
             )
 
         self.res_block1 = ResnetBlock(in_ch, out_ch, time_emb_dim)
-        self.res_block2 = ResnetBlock(out_ch, out_ch, time_emb_dim)
+        # self.res_block2 = ResnetBlock(out_ch, out_ch, time_emb_dim)
             
         # self.bnorm1 = normalization(out_ch)
         # self.bnorm2 = normalization(out_ch)
         # self.relu = Activation()
 
         self.attn1 = SpatialTransformer(out_ch, 8, 1, 128)
-        self.attn2 = SpatialTransformer(out_ch, 8, 1, 128)
+        # self.attn2 = SpatialTransformer(out_ch, 8, 1, 128)
 
     def forward(self, x, t, class_emb):
         # h = self.bnorm1(self.relu(self.conv1(x)))
@@ -60,13 +61,14 @@ class Block(nn.Module):
         
         h = self.res_block1(x, time_emb)
         h = self.attn1(h, class_emb)
-        h = self.res_block2(h, time_emb)
-        h = self.attn2(h, class_emb)
+        # h = self.res_block2(h, time_emb)
+        # h = self.attn2(h, class_emb)
         
-        if self.trans:
-            h = self.transform(h)
-        
-        return h
+        if self.trans and not self.up:
+            x = self.transform(h)
+            return x, h
+        else:
+            return h, None
 
 
 class ResnetBlock(nn.Module):
@@ -142,13 +144,21 @@ class LatentConditionalUnet(nn.Module):
         # # Downsampling blocks
         # self.downs = nn.ModuleList([
         #     Block(down_channels[i], down_channels[i + 1], time_emb_dim, trans=(i != len(down_channels) - 2))
-        #     for i in range(len(down_channels) - 1)
+        #     for i in range(len(down_channels - 1))
         # ])
         
         # Downsampling blocks
+        # self.downs = nn.ModuleList([
+        #     Block(down_channels[i], down_channels[i + 1], time_emb_dim)
+        #     for i in range(len(down_channels) - 1)
+        # ])
+
         self.downs = nn.ModuleList([
-            Block(down_channels[i], down_channels[i + 1], time_emb_dim)
-            for i in range(len(down_channels) - 1)
+            Block(down_channels[0], down_channels[0], time_emb_dim),
+            Block(down_channels[0], down_channels[1], time_emb_dim),
+            Block(down_channels[1], down_channels[2], time_emb_dim),
+            Block(down_channels[2], down_channels[3], time_emb_dim),
+            Block(down_channels[3], down_channels[4], time_emb_dim, trans=False),
         ])
         
         # self.bottleneck = nn.Sequential(
@@ -167,17 +177,18 @@ class LatentConditionalUnet(nn.Module):
         #     for i in range(len(up_channels) - 1)
         # ])
 
-        self.ups = nn.ModuleList([
-            Block(up_channels[i]*2, up_channels[i + 1], time_emb_dim, up=True)
-            for i in range(len(up_channels) - 1)
-        ])
-        
         # self.ups = nn.ModuleList([
-        #     Block(up_channels[0]*2, up_channels[1], time_emb_dim, up=True),
-        #     Block(up_channels[1]*2, up_channels[2], time_emb_dim, up=True),
-        #     Block(up_channels[2]*2, up_channels[3], time_emb_dim, up=True),
-        #     Block(up_channels[3]*2, up_channels[4], time_emb_dim, up=True),
+        #     Block(up_channels[i]*2, up_channels[i + 1], time_emb_dim, up=True)
+        #     for i in range(len(up_channels) - 1)
         # ])
+        
+        self.ups = nn.ModuleList([
+            Block(up_channels[0], up_channels[1], time_emb_dim, up=True),
+            Block(up_channels[1]+down_channels[3], up_channels[2], time_emb_dim, up=True),
+            Block(up_channels[2]+down_channels[2], up_channels[3], time_emb_dim, up=True),
+            Block(up_channels[3]+down_channels[1], up_channels[4], time_emb_dim, up=True),
+            Block(up_channels[4]+down_channels[0], up_channels[4], time_emb_dim, trans=False, up=True),
+        ])
 
         self.output = nn.Sequential(
             normalization(up_channels[-1]),
@@ -196,24 +207,29 @@ class LatentConditionalUnet(nn.Module):
         # UNet processing
         residual_inputs = []
         for down in self.downs:
-            z = down(z, t, class_emb)
-            residual_inputs.append(z)
+            z, res = down(z, t, class_emb)
+            residual_inputs.append(res)
         
         # TODO: Residual connections in bottleneck?
         # z = self.bottleneck(z)
+        print("z shape: ", z.shape)
         z = self.bres1(z, t)
         z = self.attn(z, class_emb)
         z = self.bres2(z, t)
 
+        residual_inputs.pop()
 
         for i, up in enumerate(self.ups):
-            residual_z = residual_inputs.pop()
-            if z.shape[2:] != residual_z.shape[2:]:
-                z = F.interpolate(z, size=residual_z.shape[2:], mode="bilinear", align_corners=False)
+            if i != 0:
+                residual_z = residual_inputs.pop()
+                print("z shape: ", z.shape)
+                print("residual_z shape: ", residual_z.shape)
+                if z.shape[2:] != residual_z.shape[2:]:
+                    z = F.interpolate(z, size=residual_z.shape[2:], mode="bilinear", align_corners=False)
+                
+                z = torch.cat((z, residual_z), dim=1)
             
-            z = torch.cat((z, residual_z), dim=1)
-            
-            z = up(z, t, class_emb)
+            z, _ = up(z, t, class_emb)
         
         return self.output(z)
 
