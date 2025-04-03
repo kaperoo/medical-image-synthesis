@@ -170,6 +170,7 @@ def main():
                     class_label=class_labels, 
                     t=timesteps
                 )
+                latents = torch.clamp(latents, -1.0, 1.0)
                 
             # Decode latents to images
             with torch.no_grad():
@@ -180,13 +181,13 @@ def main():
             
             # Save individual images
             for j in range(batch_size):
-                image_path = os.path.join(args.save_dir, f"class_{class_id}_sample_{image_count}.png")
+                image_path = os.path.join(args.save_dir, f"{class_id}/class_{class_id}_sample_{image_count}.png")
                 torchvision.utils.save_image(images[j], image_path, normalize=True)
                 image_count += 1
             
             # Save grid of all images in this batch
-            grid_path = os.path.join(args.save_dir, f"class_{class_id}_grid_{image_count-batch_size}-{image_count-1}.png")
-            torchvision.utils.save_image(images, grid_path, nrow=4, normalize=True)
+            # grid_path = os.path.join(args.save_dir, f"{class_id}/class_{class_id}_grid_{image_count-batch_size}-{image_count-1}.png")
+            # torchvision.utils.save_image(images, grid_path, nrow=4, normalize=True)
     
     print(f"Generated {image_count} images in {args.save_dir}")
 
