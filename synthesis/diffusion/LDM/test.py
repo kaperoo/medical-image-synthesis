@@ -10,17 +10,17 @@ import numpy as np
 
 # Load the pretrained autoencoder
 encoder = Encoder(
-    channels=128,
+    channels=64,
     channel_multipliers=[1, 2, 4],
-    n_resnet_blocks=2,
+    n_resnet_blocks=1,
     in_channels=1,
     z_channels=4
 )
 
 decoder = Decoder(
-    channels=128,
+    channels=64,
     channel_multipliers=[1, 2, 4],
-    n_resnet_blocks=2,
+    n_resnet_blocks=1,
     out_channels=1,
     z_channels=4
 )
@@ -31,8 +31,13 @@ autoencoder = Autoencoder(
     emb_channels=4,
     z_channels=4
 )
-    
-autoencoder.load_state_dict(torch.load("vae.pth"))
+
+autoencoder = torch.nn.DataParallel(autoencoder)
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+autoencoder.to(device)
+
+autoencoder.load_state_dict(torch.load("vae_fullres.pth"))
 autoencoder.eval()
 
 # Load an image
@@ -42,7 +47,7 @@ img_path = "../../../data/augmented_data/AMD/amd_1047099_1.jpg"
 data_transforms = [
         transforms.Grayscale(num_output_channels=1),
         # transforms.Resize((128, 288)),
-        transforms.Resize((128, 352)),
+        transforms.Resize((208, 576)),
         # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # Scales data into [0,1]
         # transforms.Lambda(lambda t: (t * 2) - 1),  # Scale between [-1, 1]
@@ -51,12 +56,13 @@ data_transforms = [
 data_transform = transforms.Compose(data_transforms)
 img = Image.open(img_path)
 
-img = data_transform(img).unsqueeze(0)
+img = data_transform(img).unsqueeze(0).to(device)
 
 # Pass the image through the autoencoder
 # recon_img = autoencoder(img)
-latent = autoencoder.encode(img).sample()
-recon_img = autoencoder.decode(latent)
+latent = autoencoder.module.encode(img).sample()
+print(latent.shape)
+recon_img = autoencoder.module.decode(latent)
 
 # latent = autoencoder.encoder(img)
 
