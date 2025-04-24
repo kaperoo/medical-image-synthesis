@@ -17,12 +17,12 @@ def log(string):
         file.write('\n')
         file.close()
 
-def get_loss(model, x_0, t, class_labels, class_weights):
+def get_loss(model, x_0, t, class_labels, class_weights, class_emb_weight):
     loss = nn.SmoothL1Loss(beta=0.1) 
     
     t = t[:x_0.shape[0]]
     x_noisy, noise = forward_diffusion_sample(x_0, t, DEVICE)
-    noise_pred = model(x_noisy, t, class_labels, CLASS_EMB_WEIGHT)
+    noise_pred = model(x_noisy, t, class_labels, class_emb_weight)
     
     per_sample_loss = loss(noise, noise_pred)
     weights = class_weights[class_labels].view(-1,1,1,1)

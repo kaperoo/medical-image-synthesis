@@ -13,7 +13,7 @@ def get_index_from_list(vals, t, x_shape):
     out = vals.gather(-1, t.cpu())
     return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
 
-def forward_diffusion_sample(x_0, t, device="cpu"):
+def forward_diffusion_sample(x_0, t, device):
     noise = torch.randn_like(x_0)
     sqrt_alphas_cumprod_t = get_index_from_list(sqrt_alphas_cumprod, t, x_0.shape)
     sqrt_one_minus_alphas_cumprod_t = get_index_from_list(sqrt_one_minus_alphas_cumprod, t, x_0.shape)
