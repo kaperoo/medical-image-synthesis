@@ -8,14 +8,14 @@ from util.helper_functions import *
 
 # --- SAMPLING ---
 @torch.no_grad()
-def sample_timestep(model, x, class_label, t):
+def sample_timestep(model, x, class_label, t, class_emb_weight=2):
     betas_t = get_index_from_list(betas, t, x.shape)
     sqrt_one_minus_alphas_cumprod_t = get_index_from_list(
         sqrt_one_minus_alphas_cumprod, t, x.shape
     )
     sqrt_recip_alphas_t = get_index_from_list(sqrt_recip_alphas, t, x.shape)
 
-    model_output = model(x, t, class_label, CLASS_EMB_WEIGHT)
+    model_output = model(x, t, class_label, class_emb_weight)
     
     model_mean = sqrt_recip_alphas_t * (
         x - betas_t * model_output / sqrt_one_minus_alphas_cumprod_t

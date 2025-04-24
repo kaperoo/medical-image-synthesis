@@ -4,7 +4,7 @@ import os
 # --- SETUP ---
 # general
 ITERATION = '106'
-OUTPUT_TO_FILE = True
+OUTPUT_TO_FILE = False
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PATH = 'augmented_data'
 RESULTS_PATH = f"results{ITERATION}"
