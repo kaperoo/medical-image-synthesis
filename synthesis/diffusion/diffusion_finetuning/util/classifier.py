@@ -18,30 +18,6 @@ NUM_CLASSES = 7
 LR = 1e-3
 EPOCHS = 100
 
-class Model(nn.Module):
-    def __init__(self, num_classes=NUM_CLASSES, model_name='resnet18', pretrained=True):
-        super(Model, self).__init__()
-        base_model = getattr(models, model_name)(pretrained=pretrained)
-        self.features = nn.Sequential(*list(base_model.children())[:-2])  # Keep all layers except FC
-        
-        # Additional convolutional layers
-        self.extra_conv = nn.Sequential(
-            nn.Conv2d(512, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1, 1))
-        )
-        
-        self.classifier = nn.Linear(128, num_classes)
-        
-    def forward(self, x):
-        x = self.features(x)
-        x = self.extra_conv(x)
-        x = torch.flatten(x, 1)
-        x = self.classifier(x)
-        return x
-
 def load_data(): 
     transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
@@ -62,7 +38,7 @@ def load_data():
     return dataloaders, classes
 
 # Load Pretrained ResNet Model
-def get_resnet_model(num_classes, model_name='resnet18', pretrained=True):
+def get_resnet_model(num_classes=NUM_CLASSES, model_name='resnet18', pretrained=True):
     model = getattr(models, model_name)(pretrained=pretrained)
     in_features = model.fc.in_features
     model.fc = nn.Sequential(
@@ -140,7 +116,7 @@ if __name__ == "__main__":
     dataloaders, class_names = load_data()
     
     # Get model and define loss/optimizer
-    model = Model()
+    model = get_resnet_model()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.fc.parameters(), lr=LR)
 
